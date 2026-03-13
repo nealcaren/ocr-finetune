@@ -24,8 +24,8 @@ echo
 echo "----- ACTIVE JOBS -----"
 squeue -u "$USER_NAME" -o "%.10i %.20j %.8T %.10M %.6D %R" 2>/dev/null \
     | grep -E "JOBID|ocr_bench|glm_finetune|glm_eval" | head -20
-running=$(squeue -u "$USER_NAME" -h -t RUNNING 2>/dev/null | grep -cE "ocr_bench|glm_finetune|glm_eval" || true)
-pending=$(squeue -u "$USER_NAME" -h -t PENDING 2>/dev/null | grep -cE "ocr_bench|glm_finetune|glm_eval" || true)
+running=$(squeue -u "$USER_NAME" -h -t RUNNING 2>/dev/null | grep -E "ocr_bench|glm_finetune|glm_eval" | wc -l | tr -d ' ')
+pending=$(squeue -u "$USER_NAME" -h -t PENDING 2>/dev/null | grep -E "ocr_bench|glm_finetune|glm_eval" | wc -l | tr -d ' ')
 echo
 printf "Running: %s   Pending: %s\n" "$running" "$pending"
 
@@ -91,7 +91,7 @@ echo
 echo "----- RECENT ERRORS -----"
 err_found=0
 for errfile in $(ls -t benchmark_*.err finetune_*.err eval_*.err 2>/dev/null | head -8); do
-    err_count=$(grep -ciP "error|exception|traceback|oom|killed" "$errfile" 2>/dev/null || echo 0)
+    err_count=$(grep -iP "error|exception|traceback|oom|killed" "$errfile" 2>/dev/null | wc -l | tr -d ' ')
     if [[ "$err_count" -gt 0 ]]; then
         echo "  ⚠ $errfile ($err_count errors):"
         grep -iP "error|exception|oom|killed" "$errfile" 2>/dev/null | tail -2
