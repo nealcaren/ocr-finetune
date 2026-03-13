@@ -9,19 +9,21 @@
 #SBATCH --gres=gpu:1
 #SBATCH -o benchmark_%A_%a.out
 #SBATCH -e benchmark_%A_%a.err
-#SBATCH --array=0-3
+#SBATCH --array=0-6
 
 # Each array task gets its own GPU and runs one model: transcribe + evaluate.
-# All 4 run in parallel. Per-model eval CSVs land in ocr-eval/.
+# All run in parallel. Per-model eval CSVs land in ocr-eval/.
 #
 # Usage:
-#   sbatch run_benchmark.sl                        # all 4 models in parallel
+#   sbatch run_benchmark.sl                        # all 7 models in parallel
 #   sbatch --array=0,2 run_benchmark.sl            # olmocr + chandra only
 #
 # After all jobs finish, aggregate into comparison tables:
 #   python inkbench_run.py --eval-only
 
-MODELS=(olmocr nanonets-ocr2 chandra dots-ocr)
+#   0=olmocr  1=nanonets-ocr2  2=chandra  3=dots-ocr
+#   4=deepseek-ocr2  5=rolmocr  6=minicpm-v-4.5
+MODELS=(olmocr nanonets-ocr2 chandra dots-ocr deepseek-ocr2 rolmocr minicpm-v-4.5)
 MODEL=${MODELS[$SLURM_ARRAY_TASK_ID]}
 
 WORK=/work/users/n/c/ncaren

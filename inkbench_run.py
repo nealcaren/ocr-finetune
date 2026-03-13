@@ -94,6 +94,21 @@ KNOWN_MODELS = {
         "trust_remote_code": True,
         "prompt": "Text Recognition:",
     },
+    "deepseek-ocr2": {
+        "path": "deepseek-ai/DeepSeek-OCR-2",
+        "trust_remote_code": True,
+        "prompt": "Text Recognition:",
+    },
+    "rolmocr": {
+        "path": "reducto/RolmOCR",
+        "trust_remote_code": True,
+        "prompt": "Extract the plain text from this image.",
+    },
+    "minicpm-v-4.5": {
+        "path": "openbmb/MiniCPM-V-4_5",
+        "trust_remote_code": True,
+        "prompt": "Text Recognition:",
+    },
 }
 
 
@@ -347,14 +362,24 @@ TYPE_ORDER = ["Book Page", "Handwritten", "Mixed", "Other Typed/Printed", "Newsp
 
 
 def aggregate_results():
-    """Read all per-model CSVs from EVAL_DIR, produce comparison tables."""
-    if not EVAL_DIR.exists():
-        print("No per-model eval CSVs found. Run models first.")
-        return
+    """Generate missing per-model eval CSVs, then produce comparison tables."""
+    # First, evaluate any models that have results but no eval CSV yet
+    entries = load_benchmark()
+    EVAL_DIR.mkdir(parents=True, exist_ok=True)
+    if RESULTS_DIR.exists():
+        for model_dir in sorted(RESULTS_DIR.iterdir()):
+            if not model_dir.is_dir():
+                continue
+            eval_csv = EVAL_DIR / f"{model_dir.name}.csv"
+            if not eval_csv.exists():
+                txt_count = len(list(model_dir.glob("*.txt")))
+                if txt_count > 0:
+                    print(f"Generating eval for {model_dir.name} ({txt_count} results)...")
+                    evaluate_model(model_dir.name, entries)
 
     model_csvs = sorted(EVAL_DIR.glob("*.csv"))
     if not model_csvs:
-        print("No per-model eval CSVs found in", EVAL_DIR)
+        print("No results to evaluate. Run models first.")
         return
 
     # Collect all rows

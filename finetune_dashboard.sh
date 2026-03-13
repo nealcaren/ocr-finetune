@@ -10,7 +10,7 @@ LORA_DIR="$WORK/glm-finetune/output/lora"
 MERGED_DIR="$WORK/glm-finetune/output/merged"
 
 # All benchmark models
-MODELS=(olmocr nanonets-ocr2 chandra dots-ocr glm-ocr-base glm-ocr-finetuned qwen3-vl-8b)
+MODELS=(olmocr nanonets-ocr2 chandra dots-ocr deepseek-ocr2 rolmocr minicpm-v-4.5 glm-ocr-base glm-ocr-finetuned qwen3-vl-8b)
 
 # Safer terminal setting for clusters
 export TERM="${TERM/xterm-ghostty/xterm-256color}"
