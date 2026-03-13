@@ -27,7 +27,10 @@ import torch
 from collections import defaultdict
 from pathlib import Path
 from PIL import Image
-from transformers import AutoProcessor, AutoModelForImageTextToText, AutoModelForCausalLM
+from transformers import (
+    AutoProcessor, AutoModelForImageTextToText, AutoModelForCausalLM,
+    AutoModel, AutoTokenizer,
+)
 
 import jiwer
 from jiwer import (
@@ -96,8 +99,9 @@ KNOWN_MODELS = {
     },
     "deepseek-ocr2": {
         "path": "deepseek-ai/DeepSeek-OCR-2",
+        "loader": "deepseek",
         "trust_remote_code": True,
-        "prompt": "Text Recognition:",
+        "prompt": "<image>\nFree OCR. ",
     },
     "rolmocr": {
         "path": "reducto/RolmOCR",
@@ -106,6 +110,7 @@ KNOWN_MODELS = {
     },
     "minicpm-v-4.5": {
         "path": "openbmb/MiniCPM-V-4_5",
+        "loader": "minicpm",
         "trust_remote_code": True,
         "prompt": "Text Recognition:",
     },
@@ -186,14 +191,32 @@ def _get_model_config(model_name):
 
 
 def load_model(cfg):
-    """Load processor + model according to config."""
+    """Load processor/tokenizer + model according to config."""
     path = cfg["path"]
     dtype = getattr(torch, cfg["dtype"])
     trust = cfg["trust_remote_code"]
+    loader = cfg["loader"]
 
+    if loader == "deepseek":
+        tokenizer = AutoTokenizer.from_pretrained(path, trust_remote_code=True)
+        model = AutoModel.from_pretrained(
+            path, trust_remote_code=True, use_safetensors=True,
+            torch_dtype=dtype,
+        ).eval().cuda()
+        return tokenizer, model
+
+    if loader == "minicpm":
+        tokenizer = AutoTokenizer.from_pretrained(path, trust_remote_code=True)
+        model = AutoModel.from_pretrained(
+            path, trust_remote_code=True,
+            attn_implementation="sdpa", torch_dtype=dtype,
+        ).eval().cuda()
+        return tokenizer, model
+
+    # Standard path: AutoProcessor + AutoModel*
     processor = AutoProcessor.from_pretrained(path, trust_remote_code=trust)
 
-    if cfg["loader"] == "AutoModelForCausalLM":
+    if loader == "AutoModelForCausalLM":
         model = AutoModelForCausalLM.from_pretrained(
             path, torch_dtype=dtype, device_map="cuda", trust_remote_code=trust,
         )
@@ -205,8 +228,25 @@ def load_model(cfg):
     return processor, model
 
 
-def transcribe(processor, model, image_path, prompt="Text Recognition:"):
+def transcribe(processor_or_tokenizer, model, image_path, prompt="Text Recognition:",
+               loader="AutoModelForImageTextToText"):
+    """Transcribe an image. Dispatches to model-specific inference as needed."""
     image = Image.open(image_path).convert("RGB")
+
+    signal.signal(signal.SIGALRM, _timeout_handler)
+    signal.alarm(OCR_TIMEOUT)
+    try:
+        if loader == "deepseek":
+            return _transcribe_deepseek(processor_or_tokenizer, model, image_path, prompt)
+        if loader == "minicpm":
+            return _transcribe_minicpm(processor_or_tokenizer, model, image, prompt)
+        return _transcribe_standard(processor_or_tokenizer, model, image, prompt)
+    finally:
+        signal.alarm(0)
+
+
+def _transcribe_standard(processor, model, image, prompt):
+    """Standard processor + generate() path (GLM-OCR, olmOCR, Nanonets, Chandra, Dots, RolmOCR)."""
     messages = [{"role": "user", "content": [
         {"type": "image", "image": image},
         {"type": "text", "text": prompt},
@@ -220,15 +260,30 @@ def transcribe(processor, model, image_path, prompt="Text Recognition:"):
     inputs = {k: v.to(model.device) for k, v in inputs.items()}
     # Some models (e.g. Dots.OCR) add keys the model doesn't accept
     inputs.pop("mm_token_type_ids", None)
-    signal.signal(signal.SIGALRM, _timeout_handler)
-    signal.alarm(OCR_TIMEOUT)
-    try:
-        with torch.no_grad():
-            output_ids = model.generate(**inputs, max_new_tokens=2048)
-    finally:
-        signal.alarm(0)
+    with torch.no_grad():
+        output_ids = model.generate(**inputs, max_new_tokens=2048)
     generated = output_ids[0, inputs["input_ids"].shape[1]:]
     return processor.decode(generated, skip_special_tokens=True).strip()
+
+
+def _transcribe_deepseek(tokenizer, model, image_path, prompt):
+    """DeepSeek-OCR-2 uses model.infer() with its own image loading."""
+    res = model.infer(
+        tokenizer, prompt=prompt, image_file=str(image_path),
+        base_size=1024, image_size=768, crop_mode=True, save_results=False,
+    )
+    # infer() returns a string or list; extract text
+    if isinstance(res, list):
+        return "\n".join(str(r) for r in res).strip()
+    return str(res).strip()
+
+
+def _transcribe_minicpm(tokenizer, model, image, prompt):
+    """MiniCPM-V uses model.chat() with a custom message format."""
+    msgs = [{"role": "user", "content": [image, prompt]}]
+    answer = model.chat(msgs=msgs, tokenizer=tokenizer,
+                        enable_thinking=False, stream=False)
+    return str(answer).strip()
 
 
 # ── Per-model: transcribe + evaluate ─────────────────────────────────
@@ -299,8 +354,9 @@ def run_model(model_name, image_files, entries, force=False):
     out_dir = RESULTS_DIR / model_name
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    processor, model = load_model(cfg)
+    processor_or_tokenizer, model = load_model(cfg)
     prompt = cfg["prompt"]
+    loader = cfg["loader"]
 
     done = 0
     skipped = 0
@@ -316,7 +372,8 @@ def run_model(model_name, image_files, entries, force=False):
             continue
 
         try:
-            text = transcribe(processor, model, img_path, prompt=prompt)
+            text = transcribe(processor_or_tokenizer, model, img_path,
+                              prompt=prompt, loader=loader)
             out_file.write_text(text, encoding="utf-8")
             done += 1
         except OCRTimeoutError:
@@ -342,7 +399,7 @@ def run_model(model_name, image_files, entries, force=False):
     print(f"  {model_name}: {done} transcribed, {skipped} cached, {errors} errors "
           f"({elapsed:.0f}s)")
 
-    del model, processor
+    del model, processor_or_tokenizer
     torch.cuda.empty_cache()
 
     # Evaluate this model's results

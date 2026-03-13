@@ -44,8 +44,8 @@ echo "Job $SLURM_JOB_ID (array $SLURM_ARRAY_TASK_ID) — model: $MODEL"
 echo "Host: $(hostname) at $(date)"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 
-# Install extra deps needed by some models (idempotent)
-pip install -q qwen-vl-utils sentencepiece 2>/dev/null || true
+# Install extra deps needed by various models (idempotent)
+pip install -q qwen-vl-utils sentencepiece addict easydict einops 2>/dev/null || true
 
 # Transcribe 400 images + compute per-model CER/WER. Resume-safe.
 python $WORK/ocr-finetune/inkbench_run.py "$MODEL"
