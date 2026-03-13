@@ -93,7 +93,7 @@ KNOWN_MODELS = {
     },
     "dots-ocr": {
         "path": "prithivMLmods/Dots.OCR-Latest-BF16",
-        "loader": "AutoModelForCausalLM",
+        "loader": "dots-ocr",
         "trust_remote_code": True,
         "prompt": "Text Recognition:",
     },
@@ -218,6 +218,13 @@ def load_model(cfg):
         ).eval().cuda()
         return tokenizer, model
 
+    if loader == "dots-ocr":
+        processor = AutoProcessor.from_pretrained(path, trust_remote_code=True)
+        model = AutoModelForCausalLM.from_pretrained(
+            path, torch_dtype=dtype, device_map="cuda", trust_remote_code=True,
+        ).eval()
+        return processor, model
+
     # Standard path: AutoProcessor + AutoModel*
     processor = AutoProcessor.from_pretrained(path, trust_remote_code=trust)
 
@@ -245,6 +252,8 @@ def transcribe(processor_or_tokenizer, model, image_path, prompt="Text Recogniti
             return _transcribe_deepseek(processor_or_tokenizer, model, image_path, prompt)
         if loader == "minicpm":
             return _transcribe_minicpm(processor_or_tokenizer, model, image, prompt)
+        if loader == "dots-ocr":
+            return _transcribe_dots_ocr(processor_or_tokenizer, model, image_path, prompt)
         return _transcribe_standard(processor_or_tokenizer, model, image, prompt)
     finally:
         signal.alarm(0)
@@ -269,6 +278,34 @@ def _transcribe_standard(processor, model, image, prompt):
         output_ids = model.generate(**inputs, max_new_tokens=2048)
     generated = output_ids[0, inputs["input_ids"].shape[1]:]
     return processor.decode(generated, skip_special_tokens=True).strip()
+
+
+def _transcribe_dots_ocr(processor, model, image_path, prompt):
+    """Dots.OCR needs process_vision_info and file path strings, not PIL images."""
+    from qwen_vl_utils import process_vision_info
+
+    messages = [{"role": "user", "content": [
+        {"type": "image", "image": str(image_path)},
+        {"type": "text", "text": prompt},
+    ]}]
+    text = processor.apply_chat_template(
+        messages, tokenize=False, add_generation_prompt=True
+    )
+    image_inputs, video_inputs = process_vision_info(messages)
+    inputs = processor(
+        text=[text], images=image_inputs, videos=video_inputs,
+        return_tensors="pt", padding=True,
+    ).to("cuda")
+    inputs.pop("mm_token_type_ids", None)
+    with torch.no_grad():
+        output_ids = model.generate(**inputs, max_new_tokens=2048)
+    generated = [
+        out_ids[len(in_ids):]
+        for in_ids, out_ids in zip(inputs.input_ids, output_ids)
+    ]
+    return processor.batch_decode(
+        generated, skip_special_tokens=True, clean_up_tokenization_spaces=False
+    )[0].strip()
 
 
 def _transcribe_deepseek(tokenizer, model, image_path, prompt):

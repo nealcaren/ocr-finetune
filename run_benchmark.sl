@@ -14,8 +14,8 @@
 # Each array task gets its own GPU and runs one model: transcribe + evaluate.
 #
 # Usage:
-#   sbatch run_benchmark.sl                        # all 8 models, full benchmark
-#   sbatch --array=0,2 run_benchmark.sl            # olmocr + chandra only
+#   sbatch run_benchmark.sl                        # all models, full benchmark
+#   sbatch --array=0,1 run_benchmark.sl            # olmocr + chandra only
 #   NUM_IMAGES=10 sbatch run_benchmark.sl          # proof-of-concept with 10 images
 #
 # After all jobs finish, aggregate into comparison tables:
