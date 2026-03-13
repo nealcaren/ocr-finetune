@@ -1,0 +1,10 @@
+.DS_Store
+__pycache__/
+*.pyc
+*.egg-info/
+finetune_*.out
+finetune_*.err
+benchmark_*.out
+benchmark_*.err
+eval_*.out
+eval_*.err
