@@ -20,26 +20,41 @@ echo "===== OCR BENCHMARK DASHBOARD ====="
 date
 echo
 
-# --- Job status ---
+# --- Job status (only our jobs, exclude unrelated ones like ocr_all) ---
 echo "----- ACTIVE JOBS -----"
-squeue -u "$USER_NAME" -o "%.10i %.20j %.8T %.10M %.6D %R" 2>/dev/null | head -20
-running=$(squeue -u "$USER_NAME" -h -t RUNNING 2>/dev/null | wc -l | tr -d ' ')
-pending=$(squeue -u "$USER_NAME" -h -t PENDING 2>/dev/null | wc -l | tr -d ' ')
+squeue -u "$USER_NAME" -o "%.10i %.20j %.8T %.10M %.6D %R" 2>/dev/null \
+    | grep -E "JOBID|ocr_bench|glm_finetune|glm_eval" | head -20
+running=$(squeue -u "$USER_NAME" -h -t RUNNING 2>/dev/null \
+    | grep -cE "ocr_bench|glm_finetune|glm_eval" || echo 0)
+pending=$(squeue -u "$USER_NAME" -h -t PENDING 2>/dev/null \
+    | grep -cE "ocr_bench|glm_finetune|glm_eval" || echo 0)
 echo
 printf "Running: %s   Pending: %s\n" "$running" "$pending"
 
-# --- Benchmark progress per model ---
+# --- Benchmark progress per model (auto-discovers from ocr-results/) ---
 echo
 echo "----- BENCHMARK PROGRESS -----"
 printf "%-20s %8s %8s %s\n" "Model" "Images" "/ 400" "Eval"
 printf "%-20s %8s %8s %s\n" "-----" "------" "-----" "----"
+
+# Collect all model dirs that exist
+ALL_MODELS=()
+for d in "$RESULTS_DIR"/*/; do
+    [[ -d "$d" ]] && ALL_MODELS+=("$(basename "$d")")
+done
+# Add expected models that haven't started yet
 for m in "${MODELS[@]}"; do
+    if [[ ! " ${ALL_MODELS[*]} " =~ " $m " ]]; then
+        ALL_MODELS+=("$m")
+    fi
+done
+
+for m in $(printf '%s\n' "${ALL_MODELS[@]}" | sort); do
     model_dir="$RESULTS_DIR/$m"
     eval_csv="$EVAL_DIR/$m.csv"
     if [[ -d "$model_dir" ]]; then
         count=$(ls "$model_dir"/*.txt 2>/dev/null | wc -l | tr -d ' ')
         if [[ -f "$eval_csv" ]]; then
-            # Extract accuracy from the eval CSV
             acc=$(awk -F, 'NR>1 && $4=="ok" && $7!="" {sum+=$7; n++} END {if(n>0) printf "%.1f%%", (1-sum/n)*100}' "$eval_csv" 2>/dev/null)
             eval_status="${acc:-done}"
         else
