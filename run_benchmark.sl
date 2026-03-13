@@ -9,7 +9,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH -o benchmark_%A_%a.out
 #SBATCH -e benchmark_%A_%a.err
-#SBATCH --array=0-6
+#SBATCH --array=0-5
 
 # Each array task gets its own GPU and runs one model: transcribe + evaluate.
 #
@@ -22,8 +22,8 @@
 #   python inkbench_run.py --eval-only
 
 #   0=olmocr  1=nanonets-ocr2  2=chandra  3=dots-ocr
-#   4=deepseek-ocr2  5=rolmocr  6=glm-ocr-base
-MODELS=(olmocr nanonets-ocr2 chandra dots-ocr deepseek-ocr2 rolmocr glm-ocr-base)
+#   4=rolmocr  5=glm-ocr-base
+MODELS=(olmocr nanonets-ocr2 chandra dots-ocr rolmocr glm-ocr-base)
 MODEL=${MODELS[$SLURM_ARRAY_TASK_ID]}
 
 # Default to all images; override with NUM_IMAGES env var

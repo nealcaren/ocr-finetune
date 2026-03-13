@@ -97,12 +97,14 @@ KNOWN_MODELS = {
         "trust_remote_code": True,
         "prompt": "Text Recognition:",
     },
-    "deepseek-ocr2": {
-        "path": "deepseek-ai/DeepSeek-OCR-2",
-        "loader": "deepseek",
-        "trust_remote_code": True,
-        "prompt": "<image>\nFree OCR. ",
-    },
+    # NOTE: DeepSeek-OCR-2 requires transformers<=4.46 (imports LlamaFlashAttention2
+    # which was removed in 5.x). Incompatible with our env (>=5.1 for GLM-OCR).
+    # "deepseek-ocr2": {
+    #     "path": "deepseek-ai/DeepSeek-OCR-2",
+    #     "loader": "deepseek",
+    #     "trust_remote_code": True,
+    #     "prompt": "<image>\nFree OCR. ",
+    # },
     "rolmocr": {
         "path": "reducto/RolmOCR",
         "trust_remote_code": True,
