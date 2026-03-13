@@ -219,7 +219,12 @@ def load_model(cfg):
         return tokenizer, model
 
     if loader == "dots-ocr":
-        processor = AutoProcessor.from_pretrained(path, trust_remote_code=True)
+        # Limit image resolution to avoid OOM on large historical documents.
+        # Qwen2-VL default max_pixels is very high; cap at ~1.3M pixels (1280x1024).
+        processor = AutoProcessor.from_pretrained(
+            path, trust_remote_code=True,
+            min_pixels=256 * 28 * 28, max_pixels=1280 * 28 * 28,
+        )
         model = AutoModelForCausalLM.from_pretrained(
             path, torch_dtype=dtype, device_map="cuda", trust_remote_code=True,
         ).eval()
