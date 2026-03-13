@@ -218,6 +218,8 @@ def transcribe(processor, model, image_path, prompt="Text Recognition:"):
         text=[text], images=[image], return_tensors="pt", padding=True
     )
     inputs = {k: v.to(model.device) for k, v in inputs.items()}
+    # Some models (e.g. Dots.OCR) add keys the model doesn't accept
+    inputs.pop("mm_token_type_ids", None)
     signal.signal(signal.SIGALRM, _timeout_handler)
     signal.alarm(OCR_TIMEOUT)
     try:
