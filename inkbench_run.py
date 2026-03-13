@@ -589,6 +589,8 @@ def main():
                         help="Re-transcribe even if results exist")
     parser.add_argument("--eval-only", action="store_true",
                         help="Skip transcription, aggregate existing per-model CSVs")
+    parser.add_argument("-n", "--num-images", type=int, default=0,
+                        help="Only process first N images (0 = all)")
     args = parser.parse_args()
 
     if args.eval_only:
@@ -605,6 +607,8 @@ def main():
         p for p in IMAGES_DIR.iterdir()
         if p.suffix.lower() in (".png", ".jpg", ".jpeg", ".tif", ".tiff")
     )
+    if args.num_images > 0:
+        image_files = image_files[:args.num_images]
     print(f"Inkbench: {len(image_files)} images")
 
     # Determine which models to run

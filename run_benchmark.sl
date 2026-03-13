@@ -12,11 +12,11 @@
 #SBATCH --array=0-6
 
 # Each array task gets its own GPU and runs one model: transcribe + evaluate.
-# All run in parallel. Per-model eval CSVs land in ocr-eval/.
 #
 # Usage:
-#   sbatch run_benchmark.sl                        # all 7 models in parallel
+#   sbatch run_benchmark.sl                        # all 7 models, full benchmark
 #   sbatch --array=0,2 run_benchmark.sl            # olmocr + chandra only
+#   NUM_IMAGES=10 sbatch run_benchmark.sl          # proof-of-concept with 10 images
 #
 # After all jobs finish, aggregate into comparison tables:
 #   python inkbench_run.py --eval-only
@@ -25,6 +25,9 @@
 #   4=deepseek-ocr2  5=rolmocr  6=minicpm-v-4.5
 MODELS=(olmocr nanonets-ocr2 chandra dots-ocr deepseek-ocr2 rolmocr minicpm-v-4.5)
 MODEL=${MODELS[$SLURM_ARRAY_TASK_ID]}
+
+# Default to all images; override with NUM_IMAGES env var
+NUM_IMAGES=${NUM_IMAGES:-0}
 
 WORK=/work/users/n/c/ncaren
 
@@ -42,12 +45,13 @@ set -e
 
 echo "Job $SLURM_JOB_ID (array $SLURM_ARRAY_TASK_ID) — model: $MODEL"
 echo "Host: $(hostname) at $(date)"
+echo "NUM_IMAGES: $NUM_IMAGES (0 = all)"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 
 # Install extra deps needed by various models (idempotent)
 pip install -q qwen-vl-utils sentencepiece addict easydict einops 2>/dev/null || true
 
-# Transcribe 400 images + compute per-model CER/WER. Resume-safe.
-python $WORK/ocr-finetune/inkbench_run.py "$MODEL"
+# Transcribe + compute per-model CER/WER. Resume-safe.
+python $WORK/ocr-finetune/inkbench_run.py "$MODEL" -n "$NUM_IMAGES"
 
 echo "$MODEL done at $(date)"
