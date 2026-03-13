@@ -219,12 +219,7 @@ def load_model(cfg):
         return tokenizer, model
 
     if loader == "dots-ocr":
-        # Limit image resolution to avoid OOM on large historical documents.
-        # Qwen2-VL default max_pixels is very high; cap at ~1.3M pixels (1280x1024).
-        processor = AutoProcessor.from_pretrained(
-            path, trust_remote_code=True,
-            min_pixels=256 * 28 * 28, max_pixels=1280 * 28 * 28,
-        )
+        processor = AutoProcessor.from_pretrained(path, trust_remote_code=True)
         model = AutoModelForCausalLM.from_pretrained(
             path, torch_dtype=dtype, device_map="cuda", trust_remote_code=True,
         ).eval()
@@ -301,12 +296,22 @@ def _transcribe_dots_ocr(processor, model, image_path, prompt):
         text=[text], images=image_inputs, padding=True, return_tensors="pt",
     ).to("cuda")
     inputs.pop("mm_token_type_ids", None)
+
+    print(f"  [dots-ocr debug] input_ids shape: {inputs['input_ids'].shape}", flush=True)
+
     with torch.no_grad():
         generated_ids = model.generate(**inputs, max_new_tokens=2048)
+
+    print(f"  [dots-ocr debug] output shape: {generated_ids.shape}", flush=True)
+
     trimmed = [
         o[len(i):] for i, o in zip(inputs.input_ids, generated_ids)
     ]
-    return processor.batch_decode(trimmed, skip_special_tokens=True)[0].strip()
+    raw = processor.batch_decode(trimmed, skip_special_tokens=False)[0]
+    clean = processor.batch_decode(trimmed, skip_special_tokens=True)[0].strip()
+    print(f"  [dots-ocr debug] raw output: {repr(raw[:200])}", flush=True)
+    print(f"  [dots-ocr debug] clean output: {repr(clean[:200])}", flush=True)
+    return clean
 
 
 def _transcribe_deepseek(tokenizer, model, image_path, prompt):
