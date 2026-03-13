@@ -108,12 +108,15 @@ KNOWN_MODELS = {
         "trust_remote_code": True,
         "prompt": "Extract the plain text from this image.",
     },
-    "minicpm-v-4.5": {
-        "path": "openbmb/MiniCPM-V-4_5",
-        "loader": "minicpm",
-        "trust_remote_code": True,
-        "prompt": "Text Recognition:",
-    },
+    # NOTE: MiniCPM-V 4.5 requires transformers<=4.57 (trust_remote_code model
+    # uses _tied_weights_keys which was renamed in 5.x). Incompatible with our
+    # env (>=5.1 for GLM-OCR). Would need a separate conda env to benchmark.
+    # "minicpm-v-4.5": {
+    #     "path": "openbmb/MiniCPM-V-4_5",
+    #     "loader": "minicpm",
+    #     "trust_remote_code": True,
+    #     "prompt": "Text Recognition:",
+    # },
 }
 
 
