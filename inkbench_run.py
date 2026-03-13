@@ -286,31 +286,23 @@ def _transcribe_standard(processor, model, image, prompt):
 
 
 def _transcribe_dots_ocr(processor, model, image_path, prompt):
-    """Dots.OCR needs process_vision_info and file path strings, not PIL images."""
-    from qwen_vl_utils import process_vision_info
-
+    """Dots.OCR: bare image type marker + PIL image passed directly to processor."""
+    image = Image.open(image_path).convert("RGB")
     messages = [{"role": "user", "content": [
-        {"type": "image", "image": str(image_path)},
+        {"type": "image"},
         {"type": "text", "text": prompt},
     ]}]
     text = processor.apply_chat_template(
         messages, tokenize=False, add_generation_prompt=True
     )
-    image_inputs, video_inputs = process_vision_info(messages)
     inputs = processor(
-        text=[text], images=image_inputs, videos=video_inputs,
-        return_tensors="pt", padding=True,
+        text=[text], images=[image], return_tensors="pt", padding=True,
     ).to("cuda")
     inputs.pop("mm_token_type_ids", None)
     with torch.no_grad():
         output_ids = model.generate(**inputs, max_new_tokens=2048)
-    generated = [
-        out_ids[len(in_ids):]
-        for in_ids, out_ids in zip(inputs.input_ids, output_ids)
-    ]
-    return processor.batch_decode(
-        generated, skip_special_tokens=True, clean_up_tokenization_spaces=False
-    )[0].strip()
+    generated = output_ids[0, inputs["input_ids"].shape[1]:]
+    return processor.decode(generated, skip_special_tokens=True).strip()
 
 
 def _transcribe_deepseek(tokenizer, model, image_path, prompt):
