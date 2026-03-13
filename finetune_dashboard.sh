@@ -24,32 +24,17 @@ echo
 echo "----- ACTIVE JOBS -----"
 squeue -u "$USER_NAME" -o "%.10i %.20j %.8T %.10M %.6D %R" 2>/dev/null \
     | grep -E "JOBID|ocr_bench|glm_finetune|glm_eval" | head -20
-running=$(squeue -u "$USER_NAME" -h -t RUNNING 2>/dev/null \
-    | grep -cE "ocr_bench|glm_finetune|glm_eval" || echo 0)
-pending=$(squeue -u "$USER_NAME" -h -t PENDING 2>/dev/null \
-    | grep -cE "ocr_bench|glm_finetune|glm_eval" || echo 0)
+running=$(squeue -u "$USER_NAME" -h -t RUNNING 2>/dev/null | grep -cE "ocr_bench|glm_finetune|glm_eval" || true)
+pending=$(squeue -u "$USER_NAME" -h -t PENDING 2>/dev/null | grep -cE "ocr_bench|glm_finetune|glm_eval" || true)
 echo
 printf "Running: %s   Pending: %s\n" "$running" "$pending"
 
-# --- Benchmark progress per model (auto-discovers from ocr-results/) ---
+# --- Benchmark progress per model ---
 echo
 echo "----- BENCHMARK PROGRESS -----"
 printf "%-20s %8s %8s %s\n" "Model" "Images" "/ 400" "Eval"
 printf "%-20s %8s %8s %s\n" "-----" "------" "-----" "----"
-
-# Collect all model dirs that exist
-ALL_MODELS=()
-for d in "$RESULTS_DIR"/*/; do
-    [[ -d "$d" ]] && ALL_MODELS+=("$(basename "$d")")
-done
-# Add expected models that haven't started yet
 for m in "${MODELS[@]}"; do
-    if [[ ! " ${ALL_MODELS[*]} " =~ " $m " ]]; then
-        ALL_MODELS+=("$m")
-    fi
-done
-
-for m in $(printf '%s\n' "${ALL_MODELS[@]}" | sort); do
     model_dir="$RESULTS_DIR/$m"
     eval_csv="$EVAL_DIR/$m.csv"
     if [[ -d "$model_dir" ]]; then
