@@ -281,11 +281,16 @@ def _transcribe_standard(processor, model, image, prompt):
 
 
 def _transcribe_dots_ocr(processor, model, image_path, prompt):
-    """Dots.OCR: matches working local test — process_vision_info + file paths."""
+    """Dots.OCR: process_vision_info + file paths with per-image pixel cap for GPU."""
     from qwen_vl_utils import process_vision_info
 
+    # Cap pixels in the message so process_vision_info resizes before tokenizing.
+    # 1280*28*28 ≈ 1M pixels keeps input_ids under ~4k tokens → fits in 44GB VRAM.
     messages = [{"role": "user", "content": [
-        {"type": "image", "image": str(image_path)},
+        {
+            "type": "image", "image": str(image_path),
+            "min_pixels": 256 * 28 * 28, "max_pixels": 1280 * 28 * 28,
+        },
         {"type": "text", "text": prompt},
     ]}]
     text = processor.apply_chat_template(
@@ -296,22 +301,12 @@ def _transcribe_dots_ocr(processor, model, image_path, prompt):
         text=[text], images=image_inputs, padding=True, return_tensors="pt",
     ).to("cuda")
     inputs.pop("mm_token_type_ids", None)
-
-    print(f"  [dots-ocr debug] input_ids shape: {inputs['input_ids'].shape}", flush=True)
-
     with torch.no_grad():
         generated_ids = model.generate(**inputs, max_new_tokens=2048)
-
-    print(f"  [dots-ocr debug] output shape: {generated_ids.shape}", flush=True)
-
     trimmed = [
         o[len(i):] for i, o in zip(inputs.input_ids, generated_ids)
     ]
-    raw = processor.batch_decode(trimmed, skip_special_tokens=False)[0]
-    clean = processor.batch_decode(trimmed, skip_special_tokens=True)[0].strip()
-    print(f"  [dots-ocr debug] raw output: {repr(raw[:200])}", flush=True)
-    print(f"  [dots-ocr debug] clean output: {repr(clean[:200])}", flush=True)
-    return clean
+    return processor.batch_decode(trimmed, skip_special_tokens=True)[0].strip()
 
 
 def _transcribe_deepseek(tokenizer, model, image_path, prompt):
