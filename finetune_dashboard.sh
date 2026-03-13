@@ -1,138 +1,112 @@
 #!/usr/bin/env bash
-# Monitor GLM-OCR fine-tuning progress on Longleaf.
+# Monitor OCR benchmarking and fine-tuning progress on Longleaf.
 # Usage: watch -n 30 ./finetune_dashboard.sh
 
 USER_NAME="ncaren"
 WORK="/work/users/n/c/ncaren"
+RESULTS_DIR="$WORK/Inkbench/ocr-results"
+EVAL_DIR="$WORK/Inkbench/ocr-eval"
 LORA_DIR="$WORK/glm-finetune/output/lora"
 MERGED_DIR="$WORK/glm-finetune/output/merged"
+
+# All benchmark models
+MODELS=(olmocr nanonets-ocr2 chandra dots-ocr glm-ocr-base glm-ocr-finetuned qwen3-vl-8b)
 
 # Safer terminal setting for clusters
 export TERM="${TERM/xterm-ghostty/xterm-256color}"
 
 clear
-echo "===== GLM-OCR FINE-TUNE DASHBOARD ====="
+echo "===== OCR BENCHMARK DASHBOARD ====="
 date
 echo
 
 # --- Job status ---
-running=$(squeue -u "$USER_NAME" -h -t RUNNING -n glm_finetune,glm_eval 2>/dev/null | wc -l | tr -d ' ')
-pending=$(squeue -u "$USER_NAME" -h -t PENDING -n glm_finetune,glm_eval 2>/dev/null | wc -l | tr -d ' ')
-printf "Running jobs:    %s\n" "$running"
-printf "Pending jobs:    %s\n" "$pending"
-
-echo
 echo "----- ACTIVE JOBS -----"
-squeue -u "$USER_NAME" -n glm_finetune,glm_eval 2>/dev/null || echo "(none)"
-
-# --- Training progress (parse log file) ---
+squeue -u "$USER_NAME" -o "%.10i %.20j %.8T %.10M %.6D %R" 2>/dev/null | head -20
+running=$(squeue -u "$USER_NAME" -h -t RUNNING 2>/dev/null | wc -l | tr -d ' ')
+pending=$(squeue -u "$USER_NAME" -h -t PENDING 2>/dev/null | wc -l | tr -d ' ')
 echo
-echo "----- TRAINING PROGRESS -----"
-LOGFILE=$(ls -t finetune_*.out 2>/dev/null | head -1)
-if [[ -n "$LOGFILE" ]]; then
-    # Show GPU info
-    grep -m1 "NVIDIA\|Tesla\|A100\|L40" "$LOGFILE" 2>/dev/null
+printf "Running: %s   Pending: %s\n" "$running" "$pending"
 
-    # Extract latest training loss line (LLaMA-Factory logs loss at each logging_step)
-    last_loss=$(grep -oP "'loss':\s*[\d.]+" "$LOGFILE" 2>/dev/null | tail -1)
-    last_step=$(grep -oP "'current_steps':\s*\d+" "$LOGFILE" 2>/dev/null | tail -1)
-    total_steps=$(grep -oP "'total_steps':\s*\d+" "$LOGFILE" 2>/dev/null | tail -1)
-    epoch=$(grep -oP "'epoch':\s*[\d.]+" "$LOGFILE" 2>/dev/null | tail -1)
-
-    # Also try HF Trainer format
-    if [[ -z "$last_loss" ]]; then
-        last_loss=$(grep -oP "'loss': [\d.]+" "$LOGFILE" 2>/dev/null | tail -1)
-    fi
-    if [[ -z "$last_loss" ]]; then
-        last_loss=$(grep -oP "loss.*?[\d]+\.[\d]+" "$LOGFILE" 2>/dev/null | tail -1)
-    fi
-
-    if [[ -n "$last_step" && -n "$total_steps" ]]; then
-        step_num=$(echo "$last_step" | grep -oP '\d+')
-        total_num=$(echo "$total_steps" | grep -oP '\d+')
-        if [[ "$total_num" -gt 0 ]]; then
-            pct=$(awk "BEGIN {printf \"%.1f\", 100 * $step_num / $total_num}")
-            printf "Step:            %s / %s (%s%%)\n" "$step_num" "$total_num" "$pct"
+# --- Benchmark progress per model ---
+echo
+echo "----- BENCHMARK PROGRESS -----"
+printf "%-20s %8s %8s %s\n" "Model" "Images" "/ 400" "Eval"
+printf "%-20s %8s %8s %s\n" "-----" "------" "-----" "----"
+for m in "${MODELS[@]}"; do
+    model_dir="$RESULTS_DIR/$m"
+    eval_csv="$EVAL_DIR/$m.csv"
+    if [[ -d "$model_dir" ]]; then
+        count=$(ls "$model_dir"/*.txt 2>/dev/null | wc -l | tr -d ' ')
+        if [[ -f "$eval_csv" ]]; then
+            # Extract accuracy from the eval CSV
+            acc=$(awk -F, 'NR>1 && $4=="ok" && $7!="" {sum+=$7; n++} END {if(n>0) printf "%.1f%%", (1-sum/n)*100}' "$eval_csv" 2>/dev/null)
+            eval_status="${acc:-done}"
+        else
+            eval_status="-"
         fi
+        printf "%-20s %8s %8s %s\n" "$m" "$count" "/ 400" "$eval_status"
+    else
+        printf "%-20s %8s %8s %s\n" "$m" "-" "/ 400" "-"
     fi
-    if [[ -n "$epoch" ]]; then
-        printf "Epoch:           %s\n" "$(echo "$epoch" | grep -oP '[\d.]+')"
-    fi
-    if [[ -n "$last_loss" ]]; then
-        printf "Loss:            %s\n" "$(echo "$last_loss" | grep -oP '[\d.]+')"
-    fi
+done
 
-    # Show loss trend (last 5 logged values)
+# --- Per-model eval results if available ---
+eval_csvs=$(ls "$EVAL_DIR"/*.csv 2>/dev/null)
+if [[ -n "$eval_csvs" ]]; then
     echo
-    echo "  Loss trend (last 5):"
-    grep -oP "'loss':\s*[\d.]+" "$LOGFILE" 2>/dev/null | tail -5 | while read -r line; do
-        val=$(echo "$line" | grep -oP '[\d.]+')
-        printf "    %s\n" "$val"
-    done
-
-    # Check for errors
-    ERRFILE="${LOGFILE/.out/.err}"
-    if [[ -f "$ERRFILE" ]]; then
-        err_count=$(grep -ciP "error|exception|traceback|oom|killed" "$ERRFILE" 2>/dev/null || echo 0)
-        if [[ "$err_count" -gt 0 ]]; then
-            echo
-            echo "  ⚠ $err_count error(s) in $ERRFILE:"
-            grep -iP "error|exception|oom|killed" "$ERRFILE" 2>/dev/null | tail -3
+    echo "----- COMPLETED RESULTS -----"
+    printf "%-20s %10s %10s %10s %6s\n" "Model" "Accuracy" "CER_alnum" "WER" "n"
+    printf "%-20s %10s %10s %10s %6s\n" "-----" "--------" "---------" "---" "-"
+    for csv_file in $eval_csvs; do
+        m=$(basename "$csv_file" .csv)
+        result=$(awk -F, 'NR>1 && $4=="ok" && $7!="" {cer+=$7; wer+=$5; n++} END {
+            if(n>0) printf "%.3f,%.4f,%.4f,%d", 1-cer/n, cer/n, wer/n, n
+        }' "$csv_file" 2>/dev/null)
+        if [[ -n "$result" ]]; then
+            IFS=',' read -r acc cer wer n <<< "$result"
+            printf "%-20s %10s %10s %10s %6s\n" "$m" "$acc" "$cer" "$wer" "$n"
         fi
-    fi
-else
-    echo "(no finetune log files found)"
+    done
 fi
 
-# --- Checkpoints ---
-echo
-echo "----- CHECKPOINTS -----"
+# --- Fine-tuning checkpoints (if training) ---
 if [[ -d "$LORA_DIR" ]]; then
     checkpoints=$(ls -d "$LORA_DIR"/checkpoint-* 2>/dev/null | wc -l | tr -d ' ')
-    printf "LoRA checkpoints: %s\n" "$checkpoints"
-    ls -dt "$LORA_DIR"/checkpoint-* 2>/dev/null | head -3 | while read -r d; do
-        printf "  %s  (%s)\n" "$(basename "$d")" "$(date -r "$d" '+%H:%M:%S' 2>/dev/null || stat -c '%y' "$d" 2>/dev/null | cut -d. -f1)"
-    done
-else
-    echo "(no checkpoints yet)"
-fi
-
-# --- Merged model ---
-if [[ -d "$MERGED_DIR" ]]; then
-    echo
-    echo "  ✓ Merged model exists at $MERGED_DIR"
-fi
-
-# --- Evaluation progress ---
-EVALLOG=$(ls -t eval_*.out 2>/dev/null | head -1)
-if [[ -n "$EVALLOG" ]]; then
-    echo
-    echo "----- EVALUATION PROGRESS -----"
-    # Show which model is being evaluated
-    current_model=$(grep -oP "Running \K.*" "$EVALLOG" 2>/dev/null | tail -1)
-    if [[ -n "$current_model" ]]; then
-        printf "Current:         %s\n" "$current_model"
-    fi
-
-    # Count completed transcriptions
-    base_done=$(ls "$WORK/Inkbench/ocr-results/glm-ocr-base/"*.txt 2>/dev/null | wc -l | tr -d ' ')
-    ft_done=$(ls "$WORK/Inkbench/ocr-results/glm-ocr-finetuned/"*.txt 2>/dev/null | wc -l | tr -d ' ')
-    printf "Base model:      %s / 400 images\n" "$base_done"
-    printf "Fine-tuned:      %s / 400 images\n" "$ft_done"
-
-    # Show accuracy results if available
-    ACCURACY_CSV="$WORK/Inkbench/ocr_eval_model_accuracy.csv"
-    if [[ -f "$ACCURACY_CSV" ]]; then
+    if [[ "$checkpoints" -gt 0 ]]; then
         echo
-        echo "----- RESULTS -----"
-        column -t -s, "$ACCURACY_CSV" 2>/dev/null || cat "$ACCURACY_CSV"
+        echo "----- FINE-TUNE CHECKPOINTS -----"
+        printf "LoRA checkpoints: %s\n" "$checkpoints"
+        ls -dt "$LORA_DIR"/checkpoint-* 2>/dev/null | head -3 | while read -r d; do
+            printf "  %s  (%s)\n" "$(basename "$d")" "$(date -r "$d" '+%H:%M:%S' 2>/dev/null || stat -c '%y' "$d" 2>/dev/null | cut -d. -f1)"
+        done
     fi
 fi
+if [[ -d "$MERGED_DIR" ]]; then
+    echo "  ✓ Merged model at $MERGED_DIR"
+fi
 
-# --- Last 5 lines of latest log ---
+# --- Errors in recent logs ---
+echo
+echo "----- RECENT ERRORS -----"
+err_found=0
+for errfile in $(ls -t benchmark_*.err finetune_*.err eval_*.err 2>/dev/null | head -8); do
+    err_count=$(grep -ciP "error|exception|traceback|oom|killed" "$errfile" 2>/dev/null || echo 0)
+    if [[ "$err_count" -gt 0 ]]; then
+        echo "  ⚠ $errfile ($err_count errors):"
+        grep -iP "error|exception|oom|killed" "$errfile" 2>/dev/null | tail -2
+        echo
+        err_found=1
+    fi
+done
+if [[ "$err_found" -eq 0 ]]; then
+    echo "  (none)"
+fi
+
+# --- Last lines of latest log ---
 echo
 echo "----- LATEST LOG -----"
-LATEST=$(ls -t finetune_*.out eval_*.out 2>/dev/null | head -1)
+LATEST=$(ls -t benchmark_*.out finetune_*.out eval_*.out 2>/dev/null | head -1)
 if [[ -n "$LATEST" ]]; then
     echo "($LATEST)"
     tail -5 "$LATEST"
