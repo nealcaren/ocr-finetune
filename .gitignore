@@ -10,3 +10,7 @@ eval_*.out
 eval_*.err
 data/effocr/*
 !data/effocr/.gitkeep
+effocr_env/
+char_recognizer/
+word_recognizer/
+effocr_en/
