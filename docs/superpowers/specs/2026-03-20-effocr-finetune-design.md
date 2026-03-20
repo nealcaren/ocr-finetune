@@ -59,19 +59,64 @@ Run the full AS pipeline on selected full-res JP2s locally:
 - Character/word localization → bounding boxes within lines
 - EfficientOCR recognition → OCR text per line
 
-This produces line crops, character-level bounding boxes, and initial OCR text.
-
 Script: `run_as_pipeline.py` (wrapper around AS pipeline with our paths/config)
+
+**JP2 dependency**: Pillow's JP2 support requires `openjp2` system library. Install via `brew install openjpeg` (macOS) and verify with `from PIL import Image; Image.open("test.jp2")`. Alternatively use `glymur` for JP2 decoding.
+
+### AS Pipeline Output Format
+
+The AS pipeline (`run_img2txt_yolo_pipeline.py`) produces one JSON file per input image. Each JSON contains:
+
+```json
+{
+  "regions": [
+    {
+      "bbox": [x1, y1, x2, y2],
+      "class": "article|ad|headline|...",
+      "legibility_score": 0.95,
+      "lines": [
+        {
+          "bbox": [x1, y1, x2, y2],
+          "text": "OCR output for this line",
+          "words": [
+            {"bbox": [x1, y1, x2, y2], "text": "word", "confidence": 0.92}
+          ],
+          "chars": [
+            {"bbox": [x1, y1, x2, y2], "char": "A", "confidence": 0.88}
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+Character-level bounding boxes come from EfficientOCR's localizer running inside the AS pipeline. These are the coordinates we use in Step 4 to crop individual characters. Line crops must be extracted from the original JP2 using line-level bounding boxes — the AS pipeline does not save crop images to disk.
 
 ## Step 3: LLM Quality Verification
 
 For each detected line:
-1. Crop the line image from the full-res JP2
-2. Send to Qwen3-VL 235B via OpenRouter with the AS OCR text
-3. Ask the model to: accept the transcription as correct, reject it as unreadable/wrong, or provide a corrected transcription
+1. Crop the line image from the full-res JP2 using line bounding box
+2. Send to Qwen3-VL 235B via OpenRouter — model transcribes the line image *first* (without seeing AS OCR), then compares to the AS text
+3. Outcome: accept (AS matches LLM), correct (use LLM transcription), or reject (image unreadable / low confidence)
 4. Only accepted and corrected lines enter the gold-standard dataset
 
-Output: JSON mapping line crop paths to verified transcriptions, with accept/reject/correct status.
+**Prompt design**: The LLM transcribes blind first to avoid anchoring bias. Then it receives the AS OCR text and returns structured JSON:
+
+```json
+{"status": "accept|correct|reject", "transcription": "verified text", "confidence": 0.95}
+```
+
+For corrections, the LLM's transcription is used. Lines where the LLM itself is low-confidence are rejected.
+
+**API handling**:
+- Resume support: results saved incrementally to JSONL, script skips already-processed lines on restart
+- Rate limiting: configurable concurrency (default 5 parallel requests) with exponential backoff on 429/500
+- Estimated volume: ~200-400 lines per page → ~2,000-4,000 calls for 10-page pilot
+
+**Quality statistics**: After verification, report acceptance/rejection/correction rates and common correction patterns to validate pipeline health.
+
+Output: JSONL file mapping line crop paths to verified transcriptions with status and confidence.
 
 Script: `verify_lines.py`
 
@@ -81,16 +126,33 @@ Script: `verify_lines.py`
 
 From verified lines, construct EfficientOCR training data:
 
-**Character recognizer data**:
-- Use AS localizer bounding boxes to crop individual characters from line images
-- Organize into folders by ASCII code (e.g., `65/` for 'A')
-- Prefix real crops with `PAIRED_` (EfficientOCR convention)
-- Repeat at 3 resolutions: ~30%, ~50%, ~75% of original
+**Character recognizer data** (image classification, folder-per-class):
+```
+char_training_data/
+  65/           # chr(65) = 'A'
+    PAIRED_page1_line3_char0_30pct.png
+    PAIRED_page1_line3_char0_50pct.png
+    PAIRED_page1_line3_char0_75pct.png
+  66/           # chr(66) = 'B'
+    ...
+```
+- Crop characters from line images using AS localizer bounding boxes
+- `PAIRED_` prefix distinguishes real crops from synthetic augmentations in EfficientOCR's training code
+- Each character appears at 3 resolutions
 
-**Word recognizer data**:
+**Word recognizer data** (same folder-per-class structure):
+```
+word_training_data/
+  the/
+    PAIRED_page1_line3_word0_30pct.png
+    ...
+  was/
+    ...
+```
 - Crop words using AS word-level bounding boxes
-- Pair with verified text labels
-- Same multi-resolution treatment
+- Folder name = verified word text
+
+**Resolution scaling**: Downscale the *full page* first (Lanczos resampling), then crop characters/words from the downscaled page. This matches inference conditions, where the model sees a naturally low-res image rather than a downscaled crop.
 
 Script: `build_effocr_training_data.py`
 
@@ -111,19 +173,30 @@ Script: `finetune_effocr.py`
 
 ## Step 6: Evaluate
 
-Compare original vs fine-tuned EfficientOCR on held-out pages:
+**Baseline first**: Before fine-tuning, run unmodified EfficientOCR at each target resolution on pilot pages. Record CER/WER as the baseline.
+
+**After fine-tuning**: Compare original vs fine-tuned EfficientOCR on held-out pages:
 - Test at each target resolution (~30%, ~50%, ~75%)
 - Metrics: CER, WER
 - Benchmark against GLM-OCR on same pages for reference
 
+**Train/test split**: For the 10-page pilot, use 8 pages for training and 2 for evaluation. At scale-up, reserve ~10% of pages as held-out test set (pages not used in training data construction at all).
+
 Script: `eval_effocr.py`
 
-## Dependency Modernization
+## Dependency Modernization (Prerequisite)
 
-EfficientOCR currently requires Python 3.11 and `setuptools<70` due to yolov5's `pkg_resources` import. Attempt to:
-- Patch or fork to replace `pkg_resources` usage with `importlib.metadata`
-- Or swap yolov5 dependency for ultralytics (YOLOv8) which doesn't have this issue
+EfficientOCR currently requires Python 3.11 and `setuptools<70` due to yolov5's `pkg_resources` import. This must be resolved before the pipeline runs. Approach:
+- **For the pilot**: Use Python 3.11 with `setuptools<70` to avoid blocking on this
+- **Stretch goal**: Patch or fork to replace `pkg_resources` usage with `importlib.metadata`, or swap yolov5 for ultralytics (YOLOv8)
 - Goal: Python 3.12+ compatibility
+
+## Legibility Classifier at Inference Time
+
+The legibility classifier is not fine-tuned (not trainable in-package), but it rejects ~50% of lines at reduced resolution. For inference on reduced-res images, either:
+- Lower the legibility threshold to accept more lines
+- Disable the classifier entirely and rely on recognizer confidence
+- This is an inference-time configuration, not a training concern
 
 ## Scripts Summary
 
@@ -136,11 +209,17 @@ EfficientOCR currently requires Python 3.11 and `setuptools<70` due to yolov5's 
 | `finetune_effocr.py` | Run EfficientOCR training |
 | `eval_effocr.py` | Evaluate original vs fine-tuned |
 
+## Project Organization
+
+This work lives in the existing `dangerouspress-ocr-finetune` repo alongside the GLM-OCR pipeline. New scripts go in a `scripts/effocr/` subdirectory. Training data and outputs go in a `data/effocr/` subdirectory.
+
 ## Infrastructure
 
 - **All local** — no Longleaf for the pilot
+- **Python 3.11** with `setuptools<70` (prerequisite)
+- **JP2 support**: `brew install openjpeg` + Pillow or `glymur`
 - **AS pipeline**: Needs GPU for YOLO detection (local GPU or CPU with patience)
-- **Qwen3-VL**: OpenRouter API (needs API key)
+- **Qwen3-VL**: OpenRouter API (needs `OPENROUTER_API_KEY` env var)
 - **EfficientOCR training**: GPU recommended, T4-level sufficient
 - **EfficientOCR inference**: CPU
 
