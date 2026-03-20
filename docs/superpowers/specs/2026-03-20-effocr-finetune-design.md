@@ -184,12 +184,21 @@ Script: `finetune_effocr.py`
 
 Script: `eval_effocr.py`
 
-## Dependency Modernization (Prerequisite)
+## Fork EfficientOCR (Step 0)
 
-EfficientOCR currently requires Python 3.11 and `setuptools<70` due to yolov5's `pkg_resources` import. This must be resolved before the pipeline runs. Approach:
-- **For the pilot**: Use Python 3.11 with `setuptools<70` to avoid blocking on this
-- **Stretch goal**: Patch or fork to replace `pkg_resources` usage with `importlib.metadata`, or swap yolov5 for ultralytics (YOLOv8)
-- Goal: Python 3.12+ compatibility
+Fork `dell-research-harvard/efficient_ocr` to `dangerouspress/efficient_ocr` (or personal GitHub). This is a prerequisite for the whole pipeline.
+
+**Why fork**: The upstream package has stale dependencies (yolov5, `setuptools<70`, Python 3.11 only) and the repo appears unmaintained. A fork lets us modernize without waiting on upstream.
+
+**What to fix in the fork**:
+1. **Remove yolov5 dependency for recognizer-only workflows** — the AS pipeline handles detection via ONNX models with `yolov8` backend, so we don't need yolov5 at all. Guard or remove the yolov5 import so it's only loaded if someone explicitly trains a detector.
+2. **Replace `pkg_resources` usage with `importlib.metadata`** — eliminates the `setuptools<70` pin
+3. **Target Python 3.12+** compatibility
+4. **Clean up any other dead dependencies** while we're in there
+
+**AS pipeline detection**: Uses ONNX models (`layout_model_new.onnx`, `line_model_new.onnx`) with `--*_model_backend yolov8` flags. Zero yolov5 imports in the AS pipeline code itself. This is already the working configuration from the original proposal.
+
+**Package management**: Use `uv` throughout — `uv venv`, `uv pip install`, etc.
 
 ## Legibility Classifier at Inference Time
 
@@ -216,7 +225,8 @@ This work lives in the existing `dangerouspress-ocr-finetune` repo alongside the
 ## Infrastructure
 
 - **All local** — no Longleaf for the pilot
-- **Python 3.11** with `setuptools<70` (prerequisite)
+- **Python 3.12+** (after fork modernizes efficient_ocr)
+- **Package management**: `uv` throughout
 - **JP2 support**: `brew install openjpeg` + Pillow or `glymur`
 - **AS pipeline**: Needs GPU for YOLO detection (local GPU or CPU with patience)
 - **Qwen3-VL**: OpenRouter API (needs `OPENROUTER_API_KEY` env var)
