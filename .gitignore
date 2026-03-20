@@ -8,3 +8,5 @@ benchmark_*.out
 benchmark_*.err
 eval_*.out
 eval_*.err
+data/effocr/*
+!data/effocr/.gitkeep
