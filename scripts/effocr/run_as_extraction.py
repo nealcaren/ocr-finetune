@@ -225,7 +225,7 @@ def readjust_line_detections(line_preds, orig_img_width):
 
     for preds, probs, _labels in line_preds:
         for i, pred in enumerate(preds):
-            all_preds.append((pred[0], pred[1] + y0, pred[2], pred[3] + y0, probs[i]))
+            all_preds.append((pred[0], pred[1] + y0, pred[2], pred[3] + y0, probs[i].item()))
         y0 += dif
 
     all_preds = torch.tensor(all_preds)
@@ -235,8 +235,8 @@ def readjust_line_detections(line_preds, orig_img_width):
         filtered = all_preds[keep, :4]
         filtered = filtered[filtered[:, 1].sort()[1]]  # sort by y
         for pred in filtered:
-            x0, y0, x1, y1 = torch.round(pred)
-            final_preds.append((x0.item(), y0.item(), x1.item(), y1.item()))
+            px0, py0, px1, py1 = torch.round(pred)
+            final_preds.append((px0.item(), py0.item(), px1.item(), py1.item()))
 
     return final_preds
 
