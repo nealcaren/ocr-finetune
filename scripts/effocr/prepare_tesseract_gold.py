@@ -1,0 +1,162 @@
+#!/usr/bin/env python3
+"""
+Prepare Tesseract training data from LLM-verified gold-standard labels.
+
+Reads batch_verify_test.jsonl, filters to high-confidence clean/partial lines,
+creates PNG + .gt.txt pairs using LLM transcriptions as ground truth,
+and splits 80/10/10 into train/val/test.
+"""
+import json
+import random
+import shutil
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+# Paths
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+LABELS_PATH = PROJECT_ROOT / "data" / "effocr" / "batch_verify_test.jsonl"
+OUTPUT_DIR = PROJECT_ROOT / "data" / "effocr" / "tesseract_gold_training"
+
+# Config
+MIN_TEXT_LENGTH = 3
+MIN_CONFIDENCE = 0.8
+ALLOWED_FLAGS = {"clean", "partial"}
+TRAIN_RATIO = 0.80
+VAL_RATIO = 0.10
+# TEST_RATIO = 0.10 (remainder)
+SEED = 42
+
+
+def load_labels(labels_path: Path) -> list[dict]:
+    """Load and filter LLM-verified labels from JSONL."""
+    seen_keys = set()
+    labels = []
+    skipped_flag = 0
+    skipped_conf = 0
+    skipped_short = 0
+    skipped_missing = 0
+    skipped_dup = 0
+
+    with open(labels_path, "r", encoding="utf-8") as f:
+        for line in f:
+            record = json.loads(line.strip())
+            text = record.get("llm_transcription", "").strip()
+            crop_path = Path(record["crop_path"])
+            flag = record.get("llm_flag", "")
+            confidence = record.get("llm_confidence", 0.0)
+
+            # Deduplicate by page_id + line_id
+            key = f"{record['page_id']}__{record['line_id']}"
+            if key in seen_keys:
+                skipped_dup += 1
+                continue
+            seen_keys.add(key)
+
+            if flag not in ALLOWED_FLAGS:
+                skipped_flag += 1
+                continue
+            if confidence < MIN_CONFIDENCE:
+                skipped_conf += 1
+                continue
+            if len(text) < MIN_TEXT_LENGTH:
+                skipped_short += 1
+                continue
+            if not crop_path.exists():
+                skipped_missing += 1
+                continue
+
+            labels.append(record)
+
+    print(f"Loaded {len(labels)} valid labels from {len(labels) + skipped_flag + skipped_conf + skipped_short + skipped_missing + skipped_dup} total")
+    print(f"Skipped: {skipped_dup} duplicates, {skipped_flag} wrong flag, {skipped_conf} low confidence, {skipped_short} short (<{MIN_TEXT_LENGTH} chars), {skipped_missing} missing files")
+    return labels
+
+
+def split_labels(labels: list[dict]) -> tuple[list, list, list]:
+    """Split labels into train/val/test."""
+    random.seed(SEED)
+    shuffled = labels.copy()
+    random.shuffle(shuffled)
+
+    n = len(shuffled)
+    train_end = int(n * TRAIN_RATIO)
+    val_end = train_end + int(n * VAL_RATIO)
+
+    train = shuffled[:train_end]
+    val = shuffled[train_end:val_end]
+    test = shuffled[val_end:]
+
+    print(f"Split: {len(train)} train, {len(val)} val, {len(test)} test")
+    return train, val, test
+
+
+def write_split(records: list[dict], split_dir: Path, split_name: str):
+    """Write PNG + .gt.txt pairs into a split directory."""
+    split_dir.mkdir(parents=True, exist_ok=True)
+
+    for record in records:
+        crop_path = Path(record["crop_path"])
+        text = record["llm_transcription"].strip()
+        page_id = record["page_id"]
+        line_id = record["line_id"]
+
+        unique_stem = f"{page_id}__{line_id}"
+
+        # Copy PNG
+        dest_png = split_dir / f"{unique_stem}.png"
+        shutil.copy2(crop_path, dest_png)
+
+        # Write ground truth (single line, no trailing newline)
+        gt_path = split_dir / f"{unique_stem}.gt.txt"
+        gt_path.write_text(text, encoding="utf-8")
+
+    print(f"  {split_name}: wrote {len(records)} pairs to {split_dir}")
+
+
+def main():
+    print(f"Labels file: {LABELS_PATH}")
+    print(f"Output dir:  {OUTPUT_DIR}")
+    print()
+
+    if not LABELS_PATH.exists():
+        print(f"ERROR: Labels file not found: {LABELS_PATH}")
+        return 1
+
+    labels = load_labels(LABELS_PATH)
+    if not labels:
+        print("ERROR: No valid labels found")
+        return 1
+
+    train, val, test = split_labels(labels)
+
+    # Clean output dir
+    if OUTPUT_DIR.exists():
+        shutil.rmtree(OUTPUT_DIR)
+
+    write_split(train, OUTPUT_DIR / "train", "train")
+    write_split(val, OUTPUT_DIR / "val", "val")
+    write_split(test, OUTPUT_DIR / "test", "test")
+
+    # Write manifest
+    manifest = {
+        "total": len(labels),
+        "train": len(train),
+        "val": len(val),
+        "test": len(test),
+        "seed": SEED,
+        "min_text_length": MIN_TEXT_LENGTH,
+        "min_confidence": MIN_CONFIDENCE,
+        "allowed_flags": list(ALLOWED_FLAGS),
+        "source": "batch_verify_test.jsonl (LLM gold-standard labels)",
+    }
+    manifest_path = OUTPUT_DIR / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest, indent=2))
+    print(f"\nManifest: {manifest_path}")
+    print("Done!")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
