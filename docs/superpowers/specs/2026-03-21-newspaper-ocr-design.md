@@ -2,22 +2,28 @@
 
 ## Goal
 
-A standalone Python package that provides end-to-end OCR for historical newspaper scans. Modular architecture with swappable detection, recognition, and output formatting backends. Ships with AS YOLO detection, Tesseract and EfficientOCR recognition, and four output formats.
+A standalone Python package that provides end-to-end OCR for historical newspaper scans. Modular architecture with swappable detection, recognition, and output formatting backends. Ships with two detectors (AS YOLO, PP-DocLayout), two recognizers (Tesseract, EffOCR), battle-tested newspaper reading order post-processing, and three output formats.
 
 ## Architecture
 
-Three-stage pipeline with swappable components:
+Four-stage pipeline with swappable components:
 
 ```
 Image (JP2/JPG/PNG, any resolution)
     │
     ▼
 ┌─────────────┐
-│  Detector    │  ← AS YOLO (default), swappable
+│  Detector    │  ← AS YOLO (default), PP-DocLayout, swappable
 │  (layout +   │
 │   lines)     │
 └─────┬───────┘
       │  PageLayout: regions + lines + bounding boxes + crops
+      ▼
+┌─────────────────┐
+│  LayoutProcessor │  ← newspaper reading order, dedup, gap-filling
+│  (post-process)  │     Ported from dangerouspress-ocr/ocr_pipeline.py
+└─────┬───────────┘
+      │  PageLayout: regions reordered, cleaned, merged
       │
       ├──── line-level path ──────┐
       │                           ▼
@@ -33,11 +39,39 @@ Image (JP2/JPG/PNG, any resolution)
       │
       ▼
 ┌─────────────┐
-│  Formatter   │  ← text, JSON, ALTO XML, hOCR
+│  Formatter   │  ← text, JSON, hOCR
 └─────────────┘
 ```
 
 Each stage has a base class/protocol. The Pipeline class wires them together. Users select backends via config or constructor args. Adding a new backend = one file + one registry entry.
+
+## Detectors
+
+### AS YOLO (default)
+- Layout detection (YOLO v8, ONNX) → article regions
+- Line detection (YOLO v8, ONNX) → text lines within regions
+- Outputs regions AND lines — works directly with LineRecognizer
+- Fast, CPU-friendly (~8s per page)
+
+### PP-DocLayout
+- PaddleX RT-DETR model (PP-DocLayout_plus-L)
+- Detects 20 document layout categories
+- Region-level only — does NOT detect individual lines
+- When used with a LineRecognizer, each region is treated as a single unit (recognizer handles the full region crop)
+- Better at distinguishing content types (headlines, captions, tables, photographs)
+
+## LayoutProcessor (Post-Processing)
+
+Ported from the battle-tested `dangerouspress-ocr/ocr_pipeline.py`. Applied after any detector, before recognition. Six operations:
+
+1. **filter_layout_boxes()** — Keep only >0.5 confidence, relabel non-text types
+2. **rescue_low_confidence()** — Recover 0.15–0.5 score detections that fill gaps
+3. **deduplicate_boxes()** — Three-pass overlap removal (contained, title-text, near-duplicate)
+4. **fill_column_gaps()** — Identify columns via X-midpoint clustering, fill gaps
+5. **newspaper_reading_order()** — Column-aware sorting (full-width headers first, then column-by-column, top-to-bottom)
+6. **merge_adjacent_blocks()** — Combine vertically adjacent regions (>50% X-overlap, <30px Y-gap, capped at 600px height)
+
+This is optional but on by default. Can be disabled for non-newspaper documents.
 
 ## Data Model
 
@@ -126,10 +160,11 @@ ALTO XML deferred to v2 (complex standard with version fragmentation).
 
 ```python
 Pipeline(
-    detector: str = "as_yolo",
-    recognizer: str = "tesseract",
-    recognizer_model: str | Path | None = None,  # custom traineddata or model dir
+    detector: str = "as_yolo",           # "as_yolo" or "paddlex"
+    recognizer: str = "tesseract",       # "tesseract" or "effocr"
+    recognizer_model: str | Path | None = None,
     model_cache_dir: str | Path | None = None,    # default: ~/.cache/newspaper-ocr
+    layout_processing: bool = True,      # apply reading order + dedup post-processing
     device: str = "cpu",
 )
 ```
@@ -185,14 +220,17 @@ newspaper-ocr page.jp2 --backend tesseract --model news_gold.traineddata
 ```
 newspaper-ocr/
   src/newspaper_ocr/
-    __init__.py              # Pipeline export
+    __init__.py              # Public API: Pipeline, models
     pipeline.py              # Pipeline class
     models.py                # BBox, Line, Region, PageLayout
+    layout_processor.py      # Reading order, dedup, gap-fill (ported from ocr_pipeline.py)
+    registry.py              # Backend registries
 
     detectors/
       __init__.py            # registry + base class
       base.py                # Detector ABC
       as_yolo.py             # AS YOLO (layout + line detection)
+      paddlex.py             # PP-DocLayout_plus-L (region detection, no lines)
 
     recognizers/
       __init__.py            # registry + base class
@@ -205,7 +243,6 @@ newspaper-ocr/
       base.py                # Formatter ABC
       text.py                # Plain text
       json_fmt.py            # Structured JSON
-      alto.py                # ALTO XML
       hocr.py                # hOCR HTML
 
     cli.py                   # CLI entry point
@@ -227,6 +264,7 @@ Note: `torch`/`torchvision` is needed for NMS in the AS YOLO detector. This is a
 Optional extras:
 - `newspaper-ocr[tesseract]` — requires system `tesseract` binary
 - `newspaper-ocr[effocr]` — installs forked `efficient-ocr` (which brings torch anyway)
+- `newspaper-ocr[paddlex]` — installs `paddlex` + `paddlepaddle` for PP-DocLayout detector
 - `newspaper-ocr[all]` — everything
 
 **JP2 support:** Pillow's JP2 support requires the `openjpeg` system library (`brew install openjpeg` on macOS, `apt install libopenjp2-7` on Ubuntu). If unavailable, JP2 files will raise a clear error message with install instructions.
