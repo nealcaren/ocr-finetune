@@ -118,7 +118,25 @@ class Formatter(ABC):
         """Format OCR results into output string."""
 ```
 
-Ships with: `TextFormatter`, `JsonFormatter`, `AltoFormatter`, `HocrFormatter`
+Ships with: `TextFormatter`, `JsonFormatter`, `HocrFormatter`
+
+ALTO XML deferred to v2 (complex standard with version fragmentation).
+
+## Pipeline Constructor
+
+```python
+Pipeline(
+    detector: str = "as_yolo",
+    recognizer: str = "tesseract",
+    recognizer_model: str | Path | None = None,  # custom traineddata or model dir
+    model_cache_dir: str | Path | None = None,    # default: ~/.cache/newspaper-ocr
+    device: str = "cpu",
+)
+```
+
+**Path resolution:** Pipeline resolves recognizer type from the registry. If recognizer is a `LineRecognizer`, it runs per-line. If it's a `RegionRecognizer` (future VLMs), it runs per-region. No dual-path logic until a `RegionRecognizer` exists — v1 only supports line-level.
+
+**Batch recognition:** `LineRecognizer` also defines `recognize_batch(lines: list[Line]) -> list[Line]` with a default implementation that calls `recognize()` in a loop. `EffocrRecognizer` overrides this for efficient batching.
 
 ## User Interface
 
@@ -140,6 +158,9 @@ pipe = Pipeline(
     recognizer="tesseract",
     recognizer_model="path/to/news_gold.traineddata",
 )
+
+# Custom cache dir (for HPC with home quota limits)
+pipe = Pipeline(model_cache_dir="/work/users/ncaren/cache/newspaper-ocr")
 
 # Batch
 results = pipe.ocr_batch(["page1.jp2", "page2.jp2"])
@@ -196,24 +217,37 @@ newspaper-ocr/
 ## Dependencies
 
 Core (always installed):
-- `pillow` — image handling
+- `pillow` — image handling, JP2 support requires system `openjpeg` library
+- `opencv-python-headless` — image loading, resizing, letterboxing for YOLO
 - `onnxruntime` — AS YOLO detection models
-- `torch` — NMS, tensor ops for detection
 - `numpy`
+
+Note: `torch`/`torchvision` is needed for NMS in the AS YOLO detector. This is a heavy dependency (~2GB). For v1, accept the tradeoff. For v2, consider replacing with a pure numpy NMS to eliminate the torch requirement.
 
 Optional extras:
 - `newspaper-ocr[tesseract]` — requires system `tesseract` binary
-- `newspaper-ocr[effocr]` — installs forked `efficient-ocr`
+- `newspaper-ocr[effocr]` — installs forked `efficient-ocr` (which brings torch anyway)
 - `newspaper-ocr[all]` — everything
+
+**JP2 support:** Pillow's JP2 support requires the `openjpeg` system library (`brew install openjpeg` on macOS, `apt install libopenjp2-7` on Ubuntu). If unavailable, JP2 files will raise a clear error message with install instructions.
 
 ## Model Distribution
 
-AS YOLO models (`layout_model_new.onnx`, `line_model_new.onnx`) are required for the default detector. Options:
-- Bundle in the package (adds ~140MB)
-- Download on first use from HuggingFace/GitHub releases
-- User provides path
+AS YOLO models are required for the default detector:
+- `layout_model_new.onnx` (99MB) — layout detection
+- `line_model_new.onnx` (43MB) — line detection
+- `label_map_layout.json` — class ID → label mapping (bundled in package, <1KB)
 
-Recommend: download on first use with a progress bar, cache locally.
+**Strategy:** Download on first use from HuggingFace (or GitHub releases), cache to `~/.cache/newspaper-ocr/models/` (configurable via `model_cache_dir`). Show progress bar during download. Too large for PyPI bundling (100MB compressed limit).
+
+## Error Handling
+
+- **Missing Tesseract binary:** `ImportError` with install instructions at `Pipeline` construction time
+- **Missing ONNX models:** Auto-download on first use; if download fails, clear error with manual download URL
+- **Zero regions detected:** Return `PageLayout` with empty `regions` list (not an error — blank/degraded pages happen)
+- **Empty line crops:** Skip silently, log warning
+- **Corrupt model file:** `RuntimeError` with clear message
+- **JP2 without openjpeg:** `ImportError` with system package install instructions
 
 ## Registry Pattern
 
