@@ -3,8 +3,8 @@
 Fine-tune EfficientOCR char/word recognizer on Longleaf HPC (L40S GPU).
 
 This is the GPU-accelerated version of finetune_effocr.py, designed for
-UNC's Longleaf cluster. Training data (char/word crops with PAIRED_* naming)
-must be rsync'd to Longleaf before running.
+UNC's Longleaf cluster. Training data is built from the gold-standard
+HuggingFace dataset (NealCaren/newspaper-ocr-gold) by setup_longleaf.sh.
 
 Usage:
     python scripts/effocr/finetune_effocr_longleaf.py --target char --epochs 50 --batch-size 256 --device cuda
@@ -140,7 +140,7 @@ def main():
 
     if not data_dir.exists():
         print(f"ERROR: Training data not found: {data_dir}")
-        print(f"Rsync training data to {TRAINING_DATA_DIR}/ first.")
+        print(f"Run setup_longleaf.sh to download gold data from HuggingFace and build training data.")
         sys.exit(1)
 
     # Count data
