@@ -48,7 +48,8 @@ else
         --gold-jsonl $GOLD_DIR/verified_lines.jsonl \
         --image-dir $GOLD_DIR \
         --output-dir $EFFOCR_DIR/training_data \
-        --resolutions 32 64 128
+        --model-dir $EFFOCR_DIR/models \
+        --scales 1.0,0.5,0.35,0.25
 fi
 
 # Train char recognizer (50 epochs, large batch size for GPU)
