@@ -36,15 +36,16 @@ else
     # PyTorch with CUDA
     conda install --yes -c pytorch -c nvidia pytorch torchvision pytorch-cuda=12.1
 
-    # EffOCR from fork (includes training pipeline fixes)
-    pip install git+https://github.com/nealcaren/efficient_ocr.git
+    # EffOCR from fork — install WITHOUT deps to avoid pip overwriting conda's torch
+    pip install --no-deps git+https://github.com/nealcaren/efficient_ocr.git
 
-    # Additional deps for EffOCR training
-    pip install timm faiss-cpu pytorch-metric-learning
+    # Install EffOCR's non-torch deps separately
+    pip install timm faiss-cpu pytorch-metric-learning onnxruntime onnx \
+        opencv-python-headless scipy pandas albumentations kornia \
+        huggingface_hub transformers safetensors fonttools wandb
 
-    # Fix torch -- pip packages may overwrite CUDA libs
-    # Must use CUDA 12.1 wheel index and pin versions to match conda install
-    pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu121 --force-reinstall --no-deps
+    # Re-pin conda torch (pip deps may have overwritten it)
+    conda install --yes -c pytorch -c nvidia pytorch==2.5.1 torchvision pytorch-cuda=12.1 --force-reinstall
 
     # Remove brotli — causes httpx DecodingError when downloading from HuggingFace
     pip uninstall brotlicffi brotli -y 2>/dev/null || true
