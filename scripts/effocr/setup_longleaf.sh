@@ -43,7 +43,8 @@ else
     pip install timm faiss-cpu pytorch-metric-learning
 
     # Fix torch -- pip packages may overwrite CUDA libs
-    pip install --force-reinstall --no-deps torch torchvision
+    # Must use CUDA 12.1 wheel index and pin versions to match conda install
+    pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu121 --force-reinstall --no-deps
 
     # Verify imports
     python -c "
