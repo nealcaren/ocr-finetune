@@ -1,0 +1,159 @@
+{
+  "test_lines": 1216,
+  "test_pages": 9,
+  "backends": [
+    "tesseract-eng",
+    "tesseract-news_gold_v2",
+    "tesseract-news_100page",
+    "effocr-baseline"
+  ],
+  "resolutions": [
+    "100%",
+    "50%",
+    "35%",
+    "25%",
+    "15%"
+  ],
+  "results": {
+    "tesseract-eng@100%": {
+      "avg_cer": 0.0594,
+      "median_cer": 0.0263,
+      "perfect": 541,
+      "total": 1216,
+      "avg_time_ms": 127.8
+    },
+    "tesseract-news_gold_v2@100%": {
+      "avg_cer": 0.0277,
+      "median_cer": 0.0,
+      "perfect": 929,
+      "total": 1216,
+      "avg_time_ms": 137.8
+    },
+    "tesseract-news_100page@100%": {
+      "avg_cer": 0.0255,
+      "median_cer": 0.0,
+      "perfect": 925,
+      "total": 1216,
+      "avg_time_ms": 137.2
+    },
+    "effocr-baseline@100%": {
+      "avg_cer": 0.0555,
+      "median_cer": 0.0286,
+      "perfect": 490,
+      "total": 1216,
+      "avg_time_ms": 355.7
+    },
+    "tesseract-eng@50%": {
+      "avg_cer": 0.0517,
+      "median_cer": 0.027,
+      "perfect": 528,
+      "total": 1216,
+      "avg_time_ms": 123.1
+    },
+    "tesseract-news_gold_v2@50%": {
+      "avg_cer": 0.0188,
+      "median_cer": 0.0,
+      "perfect": 917,
+      "total": 1216,
+      "avg_time_ms": 133.8
+    },
+    "tesseract-news_100page@50%": {
+      "avg_cer": 0.0174,
+      "median_cer": 0.0,
+      "perfect": 936,
+      "total": 1216,
+      "avg_time_ms": 134.0
+    },
+    "effocr-baseline@50%": {
+      "avg_cer": 0.0453,
+      "median_cer": 0.027,
+      "perfect": 522,
+      "total": 1216,
+      "avg_time_ms": 352.1
+    },
+    "tesseract-eng@35%": {
+      "avg_cer": 0.0559,
+      "median_cer": 0.0323,
+      "perfect": 436,
+      "total": 1216,
+      "avg_time_ms": 123.0
+    },
+    "tesseract-news_gold_v2@35%": {
+      "avg_cer": 0.0198,
+      "median_cer": 0.0,
+      "perfect": 868,
+      "total": 1216,
+      "avg_time_ms": 134.5
+    },
+    "tesseract-news_100page@35%": {
+      "avg_cer": 0.0171,
+      "median_cer": 0.0,
+      "perfect": 921,
+      "total": 1216,
+      "avg_time_ms": 134.8
+    },
+    "effocr-baseline@35%": {
+      "avg_cer": 0.0495,
+      "median_cer": 0.0278,
+      "perfect": 482,
+      "total": 1216,
+      "avg_time_ms": 352.3
+    },
+    "tesseract-eng@25%": {
+      "avg_cer": 0.0895,
+      "median_cer": 0.0667,
+      "perfect": 214,
+      "total": 1216,
+      "avg_time_ms": 122.6
+    },
+    "tesseract-news_gold_v2@25%": {
+      "avg_cer": 0.0366,
+      "median_cer": 0.0217,
+      "perfect": 588,
+      "total": 1216,
+      "avg_time_ms": 134.3
+    },
+    "tesseract-news_100page@25%": {
+      "avg_cer": 0.0257,
+      "median_cer": 0.0,
+      "perfect": 765,
+      "total": 1216,
+      "avg_time_ms": 134.7
+    },
+    "effocr-baseline@25%": {
+      "avg_cer": 0.0912,
+      "median_cer": 0.0667,
+      "perfect": 214,
+      "total": 1216,
+      "avg_time_ms": 363.1
+    },
+    "tesseract-eng@15%": {
+      "avg_cer": 0.5757,
+      "median_cer": 0.5517,
+      "perfect": 5,
+      "total": 1216,
+      "avg_time_ms": 129.8
+    },
+    "tesseract-news_gold_v2@15%": {
+      "avg_cer": 0.5354,
+      "median_cer": 0.5,
+      "perfect": 9,
+      "total": 1216,
+      "avg_time_ms": 145.7
+    },
+    "tesseract-news_100page@15%": {
+      "avg_cer": 0.3424,
+      "median_cer": 0.2558,
+      "perfect": 19,
+      "total": 1216,
+      "avg_time_ms": 137.0
+    },
+    "effocr-baseline@15%": {
+      "avg_cer": 0.716,
+      "median_cer": 0.75,
+      "perfect": 3,
+      "total": 1216,
+      "avg_time_ms": 408.6
+    }
+  }
+}
