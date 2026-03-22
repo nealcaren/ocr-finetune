@@ -5,7 +5,8 @@
     "tesseract-eng",
     "tesseract-news_gold_v2",
     "tesseract-news_100page",
-    "effocr-baseline"
+    "effocr-baseline",
+    "glm-ocr"
   ],
   "resolutions": [
     "100%",
@@ -154,6 +155,41 @@
       "perfect": 3,
       "total": 1216,
       "avg_time_ms": 408.6
+    },
+    "glm-ocr@100%": {
+      "avg_cer": 0.0047,
+      "median_cer": 0.0,
+      "perfect": 1085,
+      "total": 1216,
+      "avg_time_ms": 129.4
+    },
+    "glm-ocr@50%": {
+      "avg_cer": 0.0044,
+      "median_cer": 0.0,
+      "perfect": 1093,
+      "total": 1216,
+      "avg_time_ms": 174.0
+    },
+    "glm-ocr@35%": {
+      "avg_cer": 0.0046,
+      "median_cer": 0.0,
+      "perfect": 1087,
+      "total": 1216,
+      "avg_time_ms": 158.2
+    },
+    "glm-ocr@25%": {
+      "avg_cer": 0.006,
+      "median_cer": 0.0,
+      "perfect": 1064,
+      "total": 1216,
+      "avg_time_ms": 144.4
+    },
+    "glm-ocr@15%": {
+      "avg_cer": 0.0287,
+      "median_cer": 0.0,
+      "perfect": 807,
+      "total": 1216,
+      "avg_time_ms": 145.6
     }
   }
 }
