@@ -41,40 +41,34 @@ else
     conda create --yes --prefix $WORK/envs/effocr python=3.11
     conda activate $WORK/envs/effocr
 
-    # Step 1: Install PyTorch with CUDA from conda (the ONLY way to get CUDA libs right)
+    # Step 1: Install ALL pip packages FIRST (before torch)
     echo ""
-    echo "=== Installing PyTorch with CUDA 12.1 ==="
+    echo "=== Installing pip dependencies ==="
+    pip install --no-deps git+https://github.com/nealcaren/efficient_ocr.git
+    pip install timm faiss-cpu pytorch-metric-learning onnxruntime onnx \
+        opencv-python-headless scipy pandas albumentations kornia \
+        huggingface_hub transformers safetensors fonttools wandb httpx
+
+    # Step 2: Remove packages that conflict with conda torch or HF downloads
+    pip uninstall brotlicffi brotli -y 2>/dev/null || true
+    # Remove any torch that pip pulled in (we want conda's version ONLY)
+    pip uninstall torch torchvision torchaudio torchtriton -y 2>/dev/null || true
+
+    # Step 3: Install PyTorch with CUDA from conda LAST (so nothing overwrites it)
+    echo ""
+    echo "=== Installing PyTorch with CUDA 12.1 (conda) ==="
     conda install --yes -c pytorch -c nvidia pytorch==2.5.1 torchvision pytorch-cuda=12.1
 
-    # Step 2: Install EffOCR fork WITHOUT deps (--no-deps prevents pip from pulling its own torch)
-    echo ""
-    echo "=== Installing EfficientOCR fork ==="
-    pip install --no-deps git+https://github.com/nealcaren/efficient_ocr.git
-
-    # Step 3: Install EffOCR's non-torch dependencies via pip
-    echo ""
-    echo "=== Installing EffOCR dependencies ==="
-    pip install --no-deps timm  # --no-deps to avoid pulling torch again
-    pip install faiss-cpu pytorch-metric-learning onnxruntime onnx \
-        opencv-python-headless scipy pandas albumentations kornia \
-        huggingface_hub transformers safetensors fonttools wandb
-
-    # Step 4: Remove brotli (causes httpx DecodingError with HuggingFace downloads)
-    pip uninstall brotlicffi brotli -y 2>/dev/null || true
-
-    # Step 5: Verify everything works
+    # Step 4: Verify everything works
     echo ""
     echo "=== Verifying installation ==="
     python -c "
 import torch
 print(f'PyTorch {torch.__version__}, CUDA available: {torch.cuda.is_available()}')
-assert not 'libcudnn' in str(torch.__file__) or torch.cuda.is_available(), \
-    'CUDA should be available but is not — torch install is broken'
 from efficient_ocr import EffOCR
 print('EffOCR import OK')
 import timm
 print(f'timm {timm.__version__}')
-print()
 print('All imports OK!')
 "
 fi
