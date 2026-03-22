@@ -46,6 +46,9 @@ else
     # Must use CUDA 12.1 wheel index and pin versions to match conda install
     pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu121 --force-reinstall --no-deps
 
+    # Remove brotli — causes httpx DecodingError when downloading from HuggingFace
+    pip uninstall brotlicffi brotli -y 2>/dev/null || true
+
     # Verify imports
     python -c "
 import torch
