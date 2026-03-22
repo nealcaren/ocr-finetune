@@ -331,15 +331,20 @@ def main():
               "test": {"positive": 0, "blank": 0}}
 
     # Multi-resolution scales: each positive example also gets downscaled copies
-    # so Tesseract learns to read text at reduced resolutions (target: ~2800px page height)
-    DOWNSCALE_FACTORS = [0.5, 0.35]  # 50% and 35% of full res
+    # so Tesseract learns to read text at reduced resolutions
+    # 50% ≈ 3000px page height (~2MB JPG)
+    # 35% ≈ 2800px page height (~1.0MB JPG) — Dangerous Press standard
+    # 25% ≈ 2300px page height (~0.7MB JPG)
+    # 15% ≈ 1400px page height (~0.3MB JPG) — stress test, may be too small
+    DOWNSCALE_FACTORS = [0.5, 0.35, 0.25, 0.15]
 
     # A) Write positive examples (full-res + downscaled)
     for entry in positives:
         split = entry["split"]
         page_id = entry["page_id"]
         line_id = entry["line_id"]
-        text = entry["transcription"].strip()
+        # Tesseract requires single-line GT; replace newlines with spaces
+        text = " ".join(entry["transcription"].strip().split())
         crop_path = Path(entry["crop_path"])
 
         if not crop_path.exists():
@@ -374,7 +379,9 @@ def main():
             except Exception as e:
                 pass  # Skip downscaling on error, full-res still saved
 
-    # B) Write LLM-flagged blanks
+    # B) Write LLM-flagged blanks (val/test only — Tesseract's LSTM trainer
+    #    cannot generate lstmf from blank/space-only box files, so we only
+    #    include blanks in the evaluation splits for noise-rejection testing)
     for entry in blank_flagged:
         split = entry["split"]
         page_id = entry["page_id"]
@@ -416,7 +423,7 @@ def main():
             counts[split]["positive"] -= 1
         counts[split]["blank"] += 1
 
-    # D) Write mined noise strips
+    # D) Write mined noise strips (val/test only)
     for split, strips in mined_noise.items():
         out_dir = OUTPUT_DIR / split
         out_dir.mkdir(parents=True, exist_ok=True)
