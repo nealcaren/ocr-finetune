@@ -57,7 +57,7 @@ uv pip install --no-deps "efficient_ocr @ git+https://github.com/nealcaren/effic
 uv pip install --no-deps timm pytorch-metric-learning
 uv pip install faiss-cpu onnxruntime onnx \
     opencv-python-headless scipy pandas albumentations kornia scikit-learn \
-    huggingface_hub transformers safetensors fonttools wandb httpx pillow
+    huggingface_hub datasets transformers safetensors fonttools wandb httpx pillow
 
 # --- Verify ---
 echo ""
@@ -74,51 +74,27 @@ print('All imports OK!')
 
 # --- Download gold-standard data from HuggingFace ---
 echo ""
-echo "=== Downloading gold-standard data from HuggingFace ==="
+echo "=== Downloading multi-res gold data from HuggingFace ==="
 
 GOLD_DIR=$EFFOCR_DIR/gold_data
 
-python -c "
-from huggingface_hub import hf_hub_download
-import tarfile, os
-
-repo = 'NealCaren/newspaper-ocr-gold'
-gold_dir = '$GOLD_DIR'
-os.makedirs(gold_dir, exist_ok=True)
-
-# Download verified labels
-print('Downloading verified_lines.jsonl...')
-hf_hub_download(repo, 'verified_lines.jsonl', repo_type='dataset', local_dir=gold_dir)
-
-# Download sample metadata
-print('Downloading sample_metadata.json...')
-hf_hub_download(repo, 'sample_metadata.json', repo_type='dataset', local_dir=gold_dir)
-
-# Download and extract image archives per split
-for split in ['train', 'val', 'test']:
-    fname = f'{split}_images.tar.gz'
-    split_dir = os.path.join(gold_dir, split)
-    if os.path.isdir(split_dir):
-        print(f'{split}/ already extracted, skipping')
-        continue
-    print(f'Downloading {fname}...')
-    path = hf_hub_download(repo, fname, repo_type='dataset')
-    print(f'Extracting {fname}...')
-    with tarfile.open(path) as tar:
-        tar.extractall(gold_dir)
-    print(f'  Extracted to {split_dir}')
-
-print('Gold data download complete.')
-"
+# Skip if already downloaded
+if [ -f "$GOLD_DIR/verified_lines.jsonl" ] && [ -d "$GOLD_DIR/train" ]; then
+    lines=$(wc -l < $GOLD_DIR/verified_lines.jsonl)
+    images=$(find $GOLD_DIR -name "*.png" | wc -l)
+    echo "Gold data already exists: $lines lines, $images images"
+else
+    python $WORK/ocr-finetune/scripts/effocr/download_gold_data.py \
+        --output-dir "$GOLD_DIR"
+fi
 
 # Count what we got
 echo ""
 echo "Gold data summary:"
 for split in train val test; do
     if [ -d "$GOLD_DIR/$split" ]; then
-        pages=$(ls -d $GOLD_DIR/$split/*/ 2>/dev/null | wc -l)
         images=$(find $GOLD_DIR/$split -name "*.png" | wc -l)
-        echo "  $split: $pages pages, $images line images"
+        echo "  $split: $images line images"
     fi
 done
 lines=$(wc -l < $GOLD_DIR/verified_lines.jsonl 2>/dev/null || echo 0)
