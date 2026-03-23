@@ -56,7 +56,7 @@ echo "=== Installing EffOCR + dependencies ==="
 uv pip install --no-deps "efficient_ocr @ git+https://github.com/nealcaren/efficient_ocr.git"
 uv pip install --no-deps timm pytorch-metric-learning
 uv pip install faiss-cpu onnxruntime onnx \
-    opencv-python-headless scipy pandas albumentations kornia \
+    opencv-python-headless scipy pandas albumentations kornia scikit-learn \
     huggingface_hub transformers safetensors fonttools wandb httpx pillow
 
 # --- Verify ---
