@@ -1,5 +1,5 @@
 #!/bin/bash
-# Set up EffOCR fine-tuning environment on Longleaf.
+# Set up EffOCR fine-tuning environment on Longleaf using uv.
 # Downloads gold-standard data from HuggingFace.
 # Training data is built on the compute node (SLURM job), not here.
 #
@@ -14,55 +14,55 @@ set -e
 
 WORK=/work/users/n/c/ncaren
 EFFOCR_DIR=$WORK/effocr-finetune
+VENV=$WORK/envs/effocr-uv
 
 # --- Redirect ALL caches to /work (home has 50GB quota) ---
-export PIP_CACHE_DIR=$WORK/pip_cache
 export TMPDIR=$WORK/tmp
-export CONDA_PKGS_DIRS=$WORK/conda_pkgs
 export XDG_CACHE_HOME=$WORK/.cache
 export HF_HOME=$WORK/hf_cache
+export UV_CACHE_DIR=$WORK/uv_cache
 export PYTHONNOUSERSITE=1
-mkdir -p $PIP_CACHE_DIR $TMPDIR $CONDA_PKGS_DIRS $XDG_CACHE_HOME $HF_HOME
+mkdir -p $TMPDIR $XDG_CACHE_HOME $HF_HOME $UV_CACHE_DIR
 
 # --- Create directory structure ---
 mkdir -p $EFFOCR_DIR/{gold_data,training_data/char,training_data/word,output,models}
 
-# --- Set up conda ---
-module purge
-module load anaconda/2024.02
-eval "$(conda shell.bash hook)"
+# --- Install uv if needed ---
+if ! command -v uv &>/dev/null; then
+    echo "Installing uv..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.local/bin:$PATH"
+fi
+echo "uv: $(uv --version)"
 
-# --- Create or activate conda env ---
-if [ -d "$WORK/envs/effocr" ]; then
-    echo "Conda env already exists: $WORK/envs/effocr"
-    conda activate $WORK/envs/effocr
+# --- Create or reuse venv ---
+if [ -d "$VENV" ]; then
+    echo "Venv already exists: $VENV"
 else
-    echo "Creating conda env: $WORK/envs/effocr"
-    conda create --yes --prefix $WORK/envs/effocr python=3.11
-    conda activate $WORK/envs/effocr
+    echo "Creating venv: $VENV"
+    uv venv --python 3.11 "$VENV"
+fi
 
-    # Step 1: Install ALL pip packages FIRST (before torch)
-    echo ""
-    echo "=== Installing pip dependencies ==="
-    pip install --no-deps git+https://github.com/nealcaren/efficient_ocr.git
-    pip install timm faiss-cpu pytorch-metric-learning onnxruntime onnx \
-        opencv-python-headless scipy pandas albumentations kornia \
-        huggingface_hub transformers safetensors fonttools wandb httpx
+# Activate
+source "$VENV/bin/activate"
 
-    # Step 2: Remove packages that conflict with conda torch or HF downloads
-    pip uninstall brotlicffi brotli -y 2>/dev/null || true
-    # Remove any torch that pip pulled in (we want conda's version ONLY)
-    pip uninstall torch torchvision torchaudio torchtriton -y 2>/dev/null || true
+# --- Install everything with uv pip ---
+echo ""
+echo "=== Installing PyTorch with CUDA 12.1 ==="
+uv pip install torch==2.5.1 torchvision --index-url https://download.pytorch.org/whl/cu121
 
-    # Step 3: Install PyTorch with CUDA from conda LAST (so nothing overwrites it)
-    echo ""
-    echo "=== Installing PyTorch with CUDA 12.1 (conda) ==="
-    conda install --yes -c pytorch -c nvidia pytorch==2.5.1 torchvision pytorch-cuda=12.1
+echo ""
+echo "=== Installing EffOCR + dependencies ==="
+uv pip install --no-deps "efficient_ocr @ git+https://github.com/nealcaren/efficient_ocr.git"
+uv pip install --no-deps timm pytorch-metric-learning
+uv pip install faiss-cpu onnxruntime onnx \
+    opencv-python-headless scipy pandas albumentations kornia \
+    huggingface_hub transformers safetensors fonttools wandb httpx pillow
 
-    # Step 4: Verify everything works
-    echo ""
-    echo "=== Verifying installation ==="
-    python -c "
+# --- Verify ---
+echo ""
+echo "=== Verifying installation ==="
+python -c "
 import torch
 print(f'PyTorch {torch.__version__}, CUDA available: {torch.cuda.is_available()}')
 from efficient_ocr import EffOCR
@@ -71,7 +71,6 @@ import timm
 print(f'timm {timm.__version__}')
 print('All imports OK!')
 "
-fi
 
 # --- Download gold-standard data from HuggingFace ---
 echo ""
@@ -125,15 +124,12 @@ done
 lines=$(wc -l < $GOLD_DIR/verified_lines.jsonl 2>/dev/null || echo 0)
 echo "  Total verified lines: $lines"
 
-# NOTE: Training data (char/word crops) is built on the compute node by the SLURM job.
-# This avoids running slow EffOCR inference on the login node.
-
 echo ""
 echo "========================================="
 echo "Setup complete!"
 echo "========================================="
 echo ""
-echo "  Environment: $WORK/envs/effocr"
+echo "  Environment: $VENV"
 echo "  Gold data:   $GOLD_DIR/"
 echo "  Output dir:  $EFFOCR_DIR/output/"
 echo ""

@@ -13,20 +13,17 @@
 WORK=/work/users/n/c/ncaren
 EFFOCR_DIR=$WORK/effocr-finetune
 GOLD_DIR=$EFFOCR_DIR/gold_data
+VENV=$WORK/envs/effocr-uv
 
-module purge
-module load anaconda/2024.02
-eval "$(conda shell.bash hook)"
-conda activate $WORK/envs/effocr
+# Activate uv venv
+source "$VENV/bin/activate"
 
 export HF_HOME=$WORK/hf_cache
 export TMPDIR=$WORK/tmp
-export PIP_CACHE_DIR=$WORK/pip_cache
-export CONDA_PKGS_DIRS=$WORK/conda_pkgs
 export XDG_CACHE_HOME=$WORK/.cache
-export PYTHONNOUSERSITE=1  # ignore ~/.local packages
+export PYTHONNOUSERSITE=1
 
-set -e  # stop on first error
+set -e
 
 echo "Job $SLURM_JOB_ID on $(hostname) at $(date)"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
