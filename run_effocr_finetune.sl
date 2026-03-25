@@ -40,8 +40,8 @@ TRAIN_CHAR_DIR=$EFFOCR_DIR/training_data/char
 if [ -d "$TRAIN_CHAR_DIR" ] && [ "$(ls -A $TRAIN_CHAR_DIR 2>/dev/null)" ]; then
     echo "Training data already built, skipping build step"
 else
-    echo "=== Building EffOCR training data from gold labels ==="
-    python $WORK/ocr-finetune/scripts/effocr/build_training_data.py \
+    echo "=== Building EffOCR training data (fast, localizer-only) ==="
+    python $WORK/ocr-finetune/scripts/effocr/build_training_data_fast.py \
         --gold-jsonl $GOLD_DIR/verified_lines.jsonl \
         --image-dir $GOLD_DIR \
         --output-dir $EFFOCR_DIR/training_data \
