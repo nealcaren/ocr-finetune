@@ -172,13 +172,12 @@ def main():
     print("\nInitializing EffOCR localizer (ONNX)...")
     from efficient_ocr.detection import LocalizerModel
     from efficient_ocr.utils import DEFAULT_CONFIG
+    import copy
 
-    config = dict(DEFAULT_CONFIG)
-    config["Localizer"] = {
-        "model_backend": "onnx",
-        "model_dir": str(model_dir),
-        "hf_repo_id": "dell-research-harvard/effocr_en",
-    }
+    config = copy.deepcopy(DEFAULT_CONFIG)
+    config["Localizer"]["model_backend"] = "onnx"
+    config["Localizer"]["model_dir"] = str(model_dir)
+    config["Localizer"]["hf_repo_id"] = "dell-research-harvard/effocr_en"
     localizer = LocalizerModel(config)
     print("Localizer ready.\n")
 

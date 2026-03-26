@@ -27,7 +27,7 @@ echo "Job $SLURM_JOB_ID on $(hostname) at $(date)"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 
 # Install any missing deps
-uv pip install accelerate 2>/dev/null || true
+uv pip install accelerate datasets 2>/dev/null || true
 
 # Copy training data from repo to work dir
 echo "=== Setting up training data ==="
