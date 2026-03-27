@@ -179,7 +179,9 @@ def main():
     config["Localizer"]["model_backend"] = "onnx"
     config["Localizer"]["model_dir"] = str(model_dir)
     config["Localizer"]["hf_repo_id"] = "dell-research-harvard/effocr_en"
-    config["Localizer"]["num_cores"] = 1  # single-threaded for simplicity
+    config["Localizer"]["num_cores"] = 1
+    # format_localizer_img checks Line backend to decide float conversion (EffOCR bug)
+    config["Line"]["model_backend"] = "onnx"
     localizer = LocalizerModel(config)
     print("Localizer ready.\n")
 
