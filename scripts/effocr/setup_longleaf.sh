@@ -48,8 +48,8 @@ source "$VENV/bin/activate"
 
 # --- Install everything with uv pip ---
 echo ""
-echo "=== Installing PyTorch with CUDA 12.1 ==="
-uv pip install torch==2.5.1 torchvision --index-url https://download.pytorch.org/whl/cu121
+echo "=== Installing PyTorch with CUDA 12.4 ==="
+uv pip install "torch>=2.6" torchvision --index-url https://download.pytorch.org/whl/cu124
 
 echo ""
 echo "=== Installing EffOCR + dependencies ==="
@@ -57,7 +57,8 @@ uv pip install --no-deps "efficient_ocr @ git+https://github.com/nealcaren/effic
 uv pip install --no-deps timm pytorch-metric-learning
 uv pip install faiss-cpu onnxruntime onnx \
     opencv-python-headless scipy pandas albumentations kornia scikit-learn \
-    huggingface_hub datasets transformers safetensors fonttools wandb httpx pillow
+    huggingface_hub datasets transformers safetensors fonttools accelerate \
+    wandb httpx pillow
 
 # --- Verify ---
 echo ""
