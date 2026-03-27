@@ -168,16 +168,18 @@ def main():
     char_data_dir.mkdir(parents=True, exist_ok=True)
     word_data_dir.mkdir(parents=True, exist_ok=True)
 
-    # Initialize localizer ONLY (no recognizer)
+    # Initialize just the localizer (ONNX backend, using run() method)
     print("\nInitializing EffOCR localizer (ONNX)...")
     from efficient_ocr.detection import LocalizerModel
     from efficient_ocr.utils import DEFAULT_CONFIG
+    from collections import defaultdict
     import copy
 
     config = copy.deepcopy(DEFAULT_CONFIG)
     config["Localizer"]["model_backend"] = "onnx"
     config["Localizer"]["model_dir"] = str(model_dir)
     config["Localizer"]["hf_repo_id"] = "dell-research-harvard/effocr_en"
+    config["Localizer"]["num_cores"] = 1  # single-threaded for simplicity
     localizer = LocalizerModel(config)
     print("Localizer ready.\n")
 
@@ -195,64 +197,58 @@ def main():
 
         try:
             line_img = Image.open(crop_path).convert("RGB")
+            line_np = np.array(line_img)
 
-            # Run localizer only — get char and word bboxes
-            line_results = [(line_img, (0, 0, line_img.size[0], line_img.size[1]))]
-            localization = localizer.run_simple(line_results, thresh=0.75)
+            # Run localizer via run() method (supports ONNX)
+            line_input = defaultdict(list)
+            line_input[0] = [(line_np, (0, 0, line_np.shape[0], line_np.shape[1]))]
+            loc_results = localizer.run(line_input)
 
-            if not localization or not localization[0]:
+            if 0 not in loc_results or 0 not in loc_results[0]:
                 processed.add(line_key)
                 continue
 
-            # localization[0] = list of (word_result, char_results) tuples
-            # Collect all char crops
-            all_chars = []
-            all_words = []
-            for item in localization[0]:
-                if isinstance(item, tuple) and len(item) == 2:
-                    word_result, char_results = item
-                    if word_result:
-                        all_words.append(word_result)  # (word_img, (x0,y0,x1,y1))
-                    if char_results:
-                        all_chars.extend(char_results)  # [(char_img, (x0,y0,x1,y1)), ...]
+            line_data = loc_results[0][0]
+            chars = line_data.get("chars", [])
+            words = line_data.get("words", [])
 
-            # Align chars to gold text
-            char_labels = align_chars_to_text(all_chars, gold_text)
-            word_labels = align_words_to_text(all_words, gold_text)
-
-            # Save character crops
-            for crop, label in char_labels:
-                if label is None or not label.strip():
-                    continue
+            # Assign gold labels to char crops (sorted left-to-right)
+            gold_chars = [c for c in gold_text if c != " "]
+            for c_idx, (char_img, char_bbox) in enumerate(chars):
+                if c_idx >= len(gold_chars):
+                    break
+                label = gold_chars[c_idx]
                 char_ord = str(ord(label))
                 char_dir = char_data_dir / char_ord
                 char_dir.mkdir(parents=True, exist_ok=True)
 
-                pil_img = crop if isinstance(crop, Image.Image) else Image.fromarray(np.array(crop))
+                pil_img = ndarray_to_pil(char_img)
                 for scale in scales:
                     scaled = downscale_crop(pil_img, scale)
                     if scaled.width < 4 or scaled.height < 4:
                         continue
                     scale_tag = f"_{int(scale * 100)}pct" if len(scales) > 1 else ""
-                    fname = f"PAIRED_{page_id}_{line_id}_c{total_chars:06d}{scale_tag}.png"
+                    fname = f"PAIRED_{page_id}_{line_id}_c{c_idx:03d}{scale_tag}.png"
                     scaled.save(str(char_dir / fname))
                     total_chars += 1
 
-            # Save word crops
-            for crop, label in word_labels:
-                if label is None or len(label) < 1:
-                    continue
+            # Assign gold labels to word crops (sorted left-to-right)
+            gold_words = gold_text.split()
+            for w_idx, (word_img, word_bbox) in enumerate(words):
+                if w_idx >= len(gold_words):
+                    break
+                label = gold_words[w_idx]
                 word_ord = str_to_ord_str(label)
                 word_dir = word_data_dir / word_ord
                 word_dir.mkdir(parents=True, exist_ok=True)
 
-                pil_img = crop if isinstance(crop, Image.Image) else Image.fromarray(np.array(crop))
+                pil_img = ndarray_to_pil(word_img)
                 for scale in scales:
                     scaled = downscale_crop(pil_img, scale)
                     if scaled.width < 8 or scaled.height < 4:
                         continue
                     scale_tag = f"_{int(scale * 100)}pct" if len(scales) > 1 else ""
-                    fname = f"PAIRED_{page_id}_{line_id}_w{total_words:06d}{scale_tag}.png"
+                    fname = f"PAIRED_{page_id}_{line_id}_w{w_idx:03d}{scale_tag}.png"
                     scaled.save(str(word_dir / fname))
                     total_words += 1
 
@@ -261,7 +257,9 @@ def main():
         except Exception as e:
             error_count += 1
             if error_count <= 10:
-                print(f"  ERROR on {line_key}: {e}")
+                import traceback
+                print(f"  ERROR on {line_key}: {type(e).__name__}: {e}")
+                traceback.print_exc()
 
         if (i + 1) % 500 == 0:
             elapsed = time.time() - t0
