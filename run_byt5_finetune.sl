@@ -3,7 +3,7 @@
 #SBATCH -n 1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32g
-#SBATCH -t 3:00:00
+#SBATCH -t 6:00:00
 #SBATCH -p l40-gpu
 #SBATCH --qos=gpu_access
 #SBATCH --gres=gpu:1

@@ -191,9 +191,9 @@ def main():
         predict_with_generate=True,
         generation_max_length=MAX_TARGET_LENGTH,
         eval_strategy="steps" if val_ds else "no",
-        eval_steps=500 if not args.local else 700,
+        eval_steps=1000 if not args.local else 700,
         save_strategy="steps",
-        save_steps=500 if not args.local else 700,
+        save_steps=1000 if not args.local else 700,
         load_best_model_at_end=True if val_ds else False,
         metric_for_best_model="cer" if val_ds else None,
         greater_is_better=False,
@@ -233,8 +233,16 @@ def main():
         compute_metrics=lambda p: compute_metrics(p, tokenizer),
     )
 
+    # Resume from checkpoint if available
+    last_checkpoint = None
+    if output_dir.exists():
+        checkpoints = sorted(output_dir.glob("checkpoint-*"))
+        if checkpoints:
+            last_checkpoint = str(checkpoints[-1])
+            print(f"\nResuming from {last_checkpoint}")
+
     print("\nStarting training...")
-    trainer.train()
+    trainer.train(resume_from_checkpoint=last_checkpoint)
 
     # Save final model
     final_dir = output_dir / "final"
