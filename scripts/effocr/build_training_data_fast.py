@@ -39,6 +39,18 @@ def str_to_ord_str(s: str) -> str:
     return "_".join(str(ord(c)) for c in s)
 
 
+def ndarray_to_pil(arr: np.ndarray) -> Image.Image:
+    """Convert numpy array crop to PIL Image."""
+    while arr.ndim > 2 and arr.shape[0] == 1:
+        arr = arr.squeeze(0)
+    if arr.dtype in (np.float32, np.float64):
+        if arr.max() <= 1.0:
+            arr = (arr * 255).clip(0, 255).astype(np.uint8)
+        else:
+            arr = arr.clip(0, 255).astype(np.uint8)
+    return Image.fromarray(arr)
+
+
 def downscale_crop(img, scale):
     new_w = max(1, int(img.width * scale))
     new_h = max(1, int(img.height * scale))
@@ -205,6 +217,16 @@ def main():
             line_input = defaultdict(list)
             line_input[0] = [(line_np, (0, 0, line_np.shape[0], line_np.shape[1]))]
             loc_results = localizer.run(line_input)
+
+            # Debug first few lines
+            if i < 5:
+                print(f"  DEBUG {line_key}: img={line_np.shape}, "
+                      f"loc_keys={list(loc_results.keys())}")
+                if 0 in loc_results and 0 in loc_results[0]:
+                    d = loc_results[0][0]
+                    print(f"    chars={len(d.get('chars', []))}, "
+                          f"words={len(d.get('words', []))}, "
+                          f"keys={list(d.keys())}")
 
             if 0 not in loc_results or 0 not in loc_results[0]:
                 processed.add(line_key)
