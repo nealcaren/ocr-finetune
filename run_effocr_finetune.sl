@@ -37,8 +37,10 @@ fi
 
 # Build EffOCR training data from gold labels (if not already built)
 TRAIN_CHAR_DIR=$EFFOCR_DIR/training_data/char
-if [ -d "$TRAIN_CHAR_DIR" ] && [ "$(ls -A $TRAIN_CHAR_DIR 2>/dev/null)" ]; then
-    echo "Training data already built, skipping build step"
+PAIRED_COUNT=$(find $TRAIN_CHAR_DIR -name "PAIRED_*.png" 2>/dev/null | head -1 | wc -l)
+if [ "$PAIRED_COUNT" -gt 0 ]; then
+    CHAR_CLASSES=$(find $TRAIN_CHAR_DIR -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+    echo "Training data already built: $CHAR_CLASSES char classes, skipping build step"
 else
     echo "=== Building EffOCR training data (fast, localizer-only) ==="
     python $WORK/ocr-finetune/scripts/effocr/build_training_data_fast.py \
