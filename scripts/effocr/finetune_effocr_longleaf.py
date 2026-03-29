@@ -143,17 +143,18 @@ def main():
         print(f"Run setup_longleaf.sh to download gold data from HuggingFace and build training data.")
         sys.exit(1)
 
-    # Count data
+    # Count data (fast — just check class dirs and sample one)
     class_dirs = [d for d in data_dir.iterdir() if d.is_dir()]
-    paired_count = sum(
-        1 for d in class_dirs
-        for f in d.iterdir()
-        if f.is_file() and f.name.startswith("PAIRED")
-    )
-    print(f"Training data: {paired_count} PAIRED crops in {len(class_dirs)} classes")
+    if class_dirs:
+        sample_dir = class_dirs[0]
+        sample_paired = [f for f in sample_dir.iterdir() if f.name.startswith("PAIRED")]
+        print(f"Training data: {len(class_dirs)} classes, ~{len(sample_paired)} PAIRED per class (sampled from {sample_dir.name})")
+    else:
+        print("ERROR: No training class directories found!")
+        sys.exit(1)
 
-    if paired_count == 0:
-        print("ERROR: No PAIRED training crops found!")
+    if not any(f.name.startswith("PAIRED") for d in class_dirs[:3] for f in d.iterdir() if f.is_file()):
+        print("ERROR: No PAIRED training crops found in first 3 classes!")
         sys.exit(1)
 
     # Generate synth renders (needed for KNN reference set)
@@ -220,11 +221,13 @@ def main():
         },
     }
 
+    print("Creating EffOCR instance...", flush=True)
     effocr = EffOCR(config=config)
-    print("EffOCR initialized.")
+    print("EffOCR initialized.", flush=True)
 
     # Run training
-    print(f"\nStarting training: {args.epochs} epochs, batch_size={args.batch_size}, lr={args.lr}")
+    print(f"\nStarting training: {args.epochs} epochs, batch_size={args.batch_size}, lr={args.lr}", flush=True)
+    sys.stdout.flush()
     try:
         effocr.train(target=f"{args.target}_recognizer")
         print(f"\n{args.target} recognizer training complete!")

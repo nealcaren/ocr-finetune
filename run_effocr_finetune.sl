@@ -22,6 +22,7 @@ export HF_HOME=$WORK/hf_cache
 export TMPDIR=$WORK/tmp
 export XDG_CACHE_HOME=$WORK/.cache
 export PYTHONNOUSERSITE=1
+export PYTHONUNBUFFERED=1
 
 set -e
 
