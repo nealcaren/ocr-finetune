@@ -56,13 +56,13 @@ fi
 echo ""
 echo "=== Training char recognizer ==="
 python $WORK/ocr-finetune/scripts/effocr/finetune_effocr_longleaf.py \
-    --target char --epochs 50 --batch-size 256 --device cuda
+    --target char --epochs 10 --batch-size 128 --device cuda
 
 # Train word recognizer (50 epochs, smaller batch for longer sequences)
 echo ""
 echo "=== Training word recognizer ==="
 python $WORK/ocr-finetune/scripts/effocr/finetune_effocr_longleaf.py \
-    --target word --epochs 50 --batch-size 128 --device cuda
+    --target word --epochs 10 --batch-size 64 --device cuda
 
 echo ""
 echo "Done at $(date)"
