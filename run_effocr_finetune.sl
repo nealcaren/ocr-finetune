@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH -J effocr_finetune
 #SBATCH -n 1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=48g
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=24g
 #SBATCH -t 6:00:00
 #SBATCH -p l40-gpu
 #SBATCH --qos=gpu_access

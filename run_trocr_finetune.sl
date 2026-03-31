@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH -J trocr_finetune
 #SBATCH -n 1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=48g
-#SBATCH -t 6:00:00
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=16g
+#SBATCH -t 3:00:00
 #SBATCH -p a100-gpu,l40-gpu
 #SBATCH --qos=gpu_access
 #SBATCH --gres=gpu:1

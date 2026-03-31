@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH -J lightonocr_eval
 #SBATCH -n 1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=32g
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=16g
 #SBATCH -t 2:00:00
 #SBATCH -p a100-gpu,l40-gpu
 #SBATCH --qos=gpu_access
