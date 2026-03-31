@@ -4,7 +4,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=48g
 #SBATCH -t 6:00:00
-#SBATCH -p l40-gpu
+#SBATCH -p a100-gpu,l40-gpu
 #SBATCH --qos=gpu_access
 #SBATCH --gres=gpu:1
 #SBATCH -o trocr_finetune_%j.out

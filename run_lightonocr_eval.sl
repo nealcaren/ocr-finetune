@@ -4,7 +4,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32g
 #SBATCH -t 2:00:00
-#SBATCH -p l40-gpu
+#SBATCH -p a100-gpu,l40-gpu
 #SBATCH --qos=gpu_access
 #SBATCH --gres=gpu:1
 #SBATCH -o lightonocr_eval_%j.out
