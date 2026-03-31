@@ -29,9 +29,14 @@ nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 # Install LightOnOCR deps
 uv pip install "git+https://github.com/huggingface/transformers" pypdfium2 2>/dev/null || true
 
-# Eval baseline on test regions
-echo "=== Evaluating LightOnOCR-2-1B-base on R2 regions ==="
-python $REPO/scripts/lightonocr/eval_lightonocr.py --limit 200
+# Eval production model first
+echo "=== Evaluating LightOnOCR-2-1B (production) on R2 regions ==="
+python $REPO/scripts/lightonocr/eval_lightonocr.py --limit 200 --model lightonai/LightOnOCR-2-1B
+
+# Then base model for fine-tuning comparison
+echo ""
+echo "=== Evaluating LightOnOCR-2-1B-base (for fine-tuning) on R2 regions ==="
+python $REPO/scripts/lightonocr/eval_lightonocr.py --limit 200 --model lightonai/LightOnOCR-2-1B-base
 
 echo ""
 echo "Done at $(date)"
