@@ -51,42 +51,39 @@ def main():
     ).to(device)
     print("Loaded.")
 
-    # Load gold
-    gold = {}
-    for line in open(REPO / "data/byt5/pipeline_gold.jsonl"):
-        d = json.loads(line)
-        if d["split"] == "test":
-            gold[f"{d['page_id']}/{d['region_id']}"] = d["target"]
+    # Load test data from HF dataset (full-res lines — LightOnOCR needs bigger images)
+    from datasets import load_dataset
+    print("Loading test data from HF dataset...")
+    ds = load_dataset("NealCaren/newspaper-ocr-gold", split="test")
+    # Use full-res images (LightOnOCR can't handle R2)
+    full_res = ds.filter(lambda x: x["resolution"] == "full" and x["confidence"] >= 0.8)
+    print(f"Test images: {len(full_res)}")
 
-    # Test on regions
-    regions_dir = REPO / "data/byt5/pipeline_regions/test"
     cers = []
     count = 0
     t0 = time.time()
 
-    for page_dir in sorted(regions_dir.iterdir()):
-        if not page_dir.is_dir():
+    for row in full_res:
+        img = row["image"]
+        ref = row["transcription"].strip()
+        if len(ref) < 3:
             continue
-        meta = json.load(open(page_dir / "metadata.json"))
-        for r in meta["regions"]:
-            key = f"{meta['page_id']}/{r['region_id']}"
-            if key not in gold:
-                continue
-            img_path = page_dir / f"{r['region_id']}.png"
-            if not img_path.exists():
-                continue
 
-            conversation = [{"role": "user", "content": [{"type": "image", "url": str(img_path)}]}]
+        # Save temp image
+        tmp_path = REPO / "tmp_lightonocr.png"
+        img.save(str(tmp_path))
+
+        try:
+            conversation = [{"role": "user", "content": [{"type": "image", "url": str(tmp_path)}]}]
             inputs = processor.apply_chat_template(
                 conversation, add_generation_prompt=True, tokenize=True,
                 return_dict=True, return_tensors="pt"
             ).to(device)
 
             with torch.no_grad():
-                output = model.generate(**inputs, max_new_tokens=1024, do_sample=False)
+                output = model.generate(**inputs, max_new_tokens=512, do_sample=False)
 
             pred = processor.decode(output[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True).strip()
-            ref = gold[key]
             c = cer(ref, pred)
             cers.append(c)
             count += 1
@@ -100,12 +97,14 @@ def main():
             if count % 50 == 0:
                 elapsed = time.time() - t0
                 avg = sum(cers) / len(cers) * 100
-                print(f"  [{count}] CER={avg:.2f}%, {elapsed:.0f}s, {count/elapsed:.1f} regions/s")
+                print(f"  [{count}] CER={avg:.2f}%, {elapsed:.0f}s, {count/elapsed:.1f} lines/s")
+        except Exception as e:
+            print(f"  Error: {e}")
 
-            if count >= args.limit:
-                break
         if count >= args.limit:
             break
+
+    tmp_path.unlink(missing_ok=True)
 
     avg = sum(cers) / len(cers) * 100
     med = sorted(cers)[len(cers) // 2] * 100

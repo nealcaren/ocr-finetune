@@ -135,17 +135,48 @@ def main():
     else:
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    kraken_dir = Path(__file__).resolve().parent.parent / "kraken"
     output_dir = Path(args.output_dir) if args.output_dir else Path(__file__).resolve().parent.parent.parent / "data" / "trocr" / "output"
+    data_dir = Path(args.data_dir) if args.data_dir else None
 
-    # Use multi-res manifests (same as Kraken)
-    train_manifest = kraken_dir / "train_multires_manifest.txt"
-    val_manifest = kraken_dir / "val_multires_manifest.txt"
+    # Find training data — try multiple locations
+    train_manifest = None
+    val_manifest = None
 
-    if not train_manifest.exists():
-        # Fall back to full-res
-        train_manifest = kraken_dir / "train_full_manifest.txt"
-        val_manifest = kraken_dir / "val_full_manifest.txt"
+    if data_dir and (data_dir / "train_manifest.txt").exists():
+        train_manifest = data_dir / "train_manifest.txt"
+        val_manifest = data_dir / "val_manifest.txt"
+    else:
+        # Try kraken manifests (local dev)
+        kraken_dir = Path(__file__).resolve().parent.parent / "kraken"
+        for name in ["train_multires_manifest.txt", "train_full_manifest.txt"]:
+            if (kraken_dir / name).exists():
+                train_manifest = kraken_dir / name
+                val_manifest = kraken_dir / name.replace("train_", "val_")
+                break
+
+    if not train_manifest or not train_manifest.exists():
+        # Last resort: download from HF and create local data
+        print("No local manifests found. Downloading from HF dataset...")
+        from datasets import load_dataset
+        ds = load_dataset("NealCaren/newspaper-ocr-gold")
+        hf_dir = output_dir.parent / "hf_data"
+        hf_dir.mkdir(parents=True, exist_ok=True)
+        for split in ["train", "val"]:
+            split_data = ds[split if split in ds else "test"]
+            r2 = split_data.filter(lambda x: x["resolution"] == "r2")
+            manifest_lines = []
+            for i, row in enumerate(r2):
+                img_path = hf_dir / f"{split}_{i:05d}.png"
+                gt_path = hf_dir / f"{split}_{i:05d}.gt.txt"
+                if not img_path.exists():
+                    row["image"].save(str(img_path))
+                    gt_path.write_text(row["transcription"])
+                manifest_lines.append(str(img_path))
+            manifest_path = hf_dir / f"{split}_manifest.txt"
+            manifest_path.write_text("\n".join(manifest_lines) + "\n")
+            print(f"  {split}: {len(manifest_lines)} images")
+        train_manifest = hf_dir / "train_manifest.txt"
+        val_manifest = hf_dir / "val_manifest.txt"
 
     print(f"Model: {MODEL_NAME}")
     print(f"Device: {device}")
